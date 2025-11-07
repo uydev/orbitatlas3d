@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "orbitatlas-api"
+version = "1.0.0"
+description = "FastAPI backend for OrbitAtlas 3D"
+authors = ["You"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version="^0.30.0"}
+psycopg2-binary = "^2.9.9"
+redis = "^5.0.8"
+pydantic = "^2.8.2"
+python-dotenv = "^1.0.1"
+SQLAlchemy = "^2.0.36"
+geoalchemy2 = "^0.15.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.2"
+httpx = "^0.27.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+

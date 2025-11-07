@@ -1,0 +1,27 @@
+patterns:
+  - name: DB connection refused
+    match: "connection refused"
+    fixes:
+      - "cd infra/docker && docker-compose restart db"
+      - "./scripts/migrate.sh"
+  - name: relation .* does not exist
+    match: "relation .* does not exist"
+    fixes:
+      - "./scripts/migrate.sh"
+  - name: missing env cesium token
+    match: "CESIUM|ION|TOKEN missing"
+    fixes:
+      - "echo '[watchdog] Please set VITE_CESIUM_ION_TOKEN in apps/web/.env'"
+  - name: Redis not reachable
+    match: "redis.*ECONNREFUSED"
+    fixes:
+      - "cd infra/docker && docker-compose restart cache"
+  - name: Port in use
+    match: "EADDRINUSE|address already in use"
+    fixes:
+      - "lsof -ti:8000 | xargs -r kill -9 || true"
+      - "lsof -ti:5173 | xargs -r kill -9 || true"
+      - "cd infra/docker && docker-compose restart api web"
+
+
+

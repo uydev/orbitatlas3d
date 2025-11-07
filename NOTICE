@@ -1,0 +1,13 @@
+This project uses the following third-party software and data:
+
+- CesiumJS — https://cesium.com/platform/cesiumjs/
+- CelesTrak / Space-Track data — https://celestrak.org/ and https://www.space-track.org/
+- NASA/ESA assets (as applicable)
+- UCS Satellite Database (as applicable)
+- Natural Earth — https://www.naturalearthdata.com/
+- GeoNames — https://www.geonames.org/
+
+Licenses and attributions for individual assets are included in their respective folders or referenced in documentation.
+
+
+
