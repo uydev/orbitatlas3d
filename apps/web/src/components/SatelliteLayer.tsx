@@ -32,25 +32,53 @@ export default function SatelliteLayer({ ids }: Props){
       let sats
       try {
         sats = await fetchActive(150)
-      } catch {
+      } catch (e) {
+        console.error('Failed to fetch satellites:', e)
         return
       }
+      if (!sats || sats.length === 0) {
+        console.warn('No satellites returned from API')
+        return
+      }
+      console.log(`Adding ${sats.length} satellites to viewer`)
       for (const s of sats) {
         try {
+          if (!s.TLE_LINE1 || !s.TLE_LINE2) {
+            console.warn(`Missing TLE for ${s.OBJECT_NAME || s.NORAD_CAT_ID}`)
+            continue
+          }
           const rec = sat.twoline2satrec(s.TLE_LINE1, s.TLE_LINE2)
-          const position = new CallbackProperty(() => {
-            const now = new Date(JulianDate.toDate(viewer.clock.currentTime))
-            const pv = sat.propagate(rec, now)
-            if (!pv.position) return undefined
-            const gmst = sat.gstime(now)
-            const geodetic = sat.eciToGeodetic(pv.position, gmst)
-            const lat = geodetic.latitude * 180/Math.PI
-            const lon = geodetic.longitude * 180/Math.PI
-            const alt = geodetic.height * 1000
-            return Cartesian3.fromDegrees(lon, lat, alt)
+          if (!rec || rec.error) {
+            console.warn(`Invalid TLE for ${s.OBJECT_NAME || s.NORAD_CAT_ID}`)
+            continue
+          }
+          
+          // Create position callback that always returns a valid position
+          const position = new CallbackProperty((time: any) => {
+            try {
+              const now = JulianDate.toDate(time || viewer.clock.currentTime)
+              const pv = sat.propagate(rec, now)
+              if (!pv.position || pv.error) {
+                // Return a default position if propagation fails
+                return Cartesian3.fromDegrees(0, 0, 0)
+              }
+              const gmst = sat.gstime(now)
+              const geodetic = sat.eciToGeodetic(pv.position, gmst)
+              const lat = geodetic.latitude * 180/Math.PI
+              const lon = geodetic.longitude * 180/Math.PI
+              const alt = geodetic.height * 1000
+              return Cartesian3.fromDegrees(lon, lat, alt)
+            } catch (e) {
+              console.warn(`Position calculation error for ${s.OBJECT_NAME}:`, e)
+              return Cartesian3.fromDegrees(0, 0, 0)
+            }
           }, false)
+          
           const id = `${SAT_PREFIX}${s.NORAD_CAT_ID}`
           createdIds.push(id)
+          
+          // Create entity without path to avoid getValueInReferenceFrame issues
+          // Path rendering conflicts with CallbackProperty position updates
           viewer.entities.add({
             id,
             name: s.OBJECT_NAME,
@@ -78,13 +106,9 @@ export default function SatelliteLayer({ ids }: Props){
               pixelOffset: new Cartesian2(0, -24),
               scaleByDistance: new NearFarScalar(5.0e4, 1.5, 3.0e7, 0.28),
               disableDepthTestDistance: 1.0e8
-            },
-            path: {
-              leadTime: 60 * 10,
-              trailTime: 60 * 30,
-              width: 1.5,
-              material: Color.CYAN.withAlpha(0.4)
             }
+            // Path removed - causes getValueInReferenceFrame error with CallbackProperty
+            // Can be added later using a different approach (sampled position property)
           })
         } catch {
           // ignore individual failures

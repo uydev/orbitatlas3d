@@ -31,14 +31,14 @@ def _fetch_celestrak_group(group: str) -> list[dict]:
     ]
     last_err: Exception | None = None
     for host in hosts:
-        # Celestrak expects uppercase query keys; lowercase can return 'Invalid query'
-        url = f"{host}/NORAD/elements/gp.php?GROUP={group}&FORMAT=json"
+        # Use TLE format to get TLE lines (not JSON which only has GP elements)
+        url = f"{host}/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
         try:
             req = urllib.request.Request(
                 url,
                 headers={
                     "User-Agent": "OrbitAtlas/1.0 (+https://localhost)",
-                    "Accept": "application/json",
+                    "Accept": "text/plain",
                     "Connection": "close",
                     "Pragma": "no-cache",
                     "Cache-Control": "no-cache",
@@ -49,10 +49,47 @@ def _fetch_celestrak_group(group: str) -> list[dict]:
             ssl_ctx = ssl.create_default_context(cafile=certifi.where()) if verify else ssl._create_unverified_context()
             with urllib.request.urlopen(req, timeout=20, context=ssl_ctx) as resp:
                 body = resp.read().decode("utf-8", errors="replace")
-            data = json.loads(body)
-            if not isinstance(data, list):
-                raise ValueError("Unexpected response shape")
-            return data
+            
+            # Parse TLE format: name, line1, line2 (3 lines per satellite)
+            body = body.replace('\r\n', '\n').replace('\r', '\n')
+            lines = [line.rstrip() for line in body.split('\n') if line.strip()]
+            data = []
+            i = 0
+            while i < len(lines):
+                # Look for TLE line1 (starts with "1 ")
+                if i < len(lines) and lines[i].strip().startswith('1 '):
+                    line1 = lines[i].strip()
+                    # Next line should be line2 (starts with "2 ")
+                    if i + 1 < len(lines) and lines[i + 1].strip().startswith('2 '):
+                        line2 = lines[i + 1].strip()
+                        # Previous line should be the name
+                        name = lines[i - 1].strip() if i > 0 else "UNKNOWN"
+                        # Extract NORAD ID from line1 (second field)
+                        try:
+                            parts = line1.split()
+                            if len(parts) >= 2:
+                                # NORAD ID is in format "00900U" or "900", extract number
+                                norad_str = parts[1].rstrip('U')
+                                norad_id = int(norad_str)
+                            else:
+                                i += 2
+                                continue
+                        except (ValueError, IndexError):
+                            i += 2
+                            continue
+                        data.append({
+                            "OBJECT_NAME": name,
+                            "NORAD_CAT_ID": norad_id,
+                            "TLE_LINE1": line1,
+                            "TLE_LINE2": line2,
+                        })
+                        i += 2  # Skip line1 and line2
+                    else:
+                        i += 1
+                else:
+                    i += 1
+            if data:
+                return data
         except Exception as e:  # noqa: BLE001
             last_err = e
             continue
@@ -134,9 +171,10 @@ def _fetch_space_track(limit: int) -> list[dict]:
         if resp.getcode() != 200:
             raise RuntimeError(f"Space-Track login failed with status {resp.getcode()}")
     limit = min(limit or SPACE_TRACK_LIMIT, SPACE_TRACK_LIMIT)
+    # Query tle_latest class which includes TLE1 and TLE2 fields
     tle_url = (
         "https://www.space-track.org/basicspacedata/query/"
-        f"class/tle_latest/format/json/ORDINAL/1/metadata/false/limit/{limit}"
+        f"class/tle_latest/ORDINAL/1/EPOCH/>now-30/format/json/metadata/false/limit/{limit}"
     )
     tle_req = urllib.request.Request(tle_url, headers=headers)
     with opener.open(tle_req, timeout=SPACE_TRACK_TIMEOUT) as resp:
@@ -144,6 +182,8 @@ def _fetch_space_track(limit: int) -> list[dict]:
     data = json.loads(body)
     if not isinstance(data, list):
         raise RuntimeError("Space-Track returned unexpected payload")
+    # Space-Track returns TLE1/TLE2, map to TLE_LINE1/TLE_LINE2
+    # Space-Track already includes OBJECT_NAME and NORAD_CAT_ID
     for obj in data:
         if "TLE_LINE1" not in obj and "TLE1" in obj:
             obj["TLE_LINE1"] = obj["TLE1"]
