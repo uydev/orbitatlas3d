@@ -9,13 +9,17 @@ interface State {
   selected?: SatSummary
   setMode: (m: Mode) => void
   select: (s?: SatSummary) => void
+  showSatellites: boolean
+  toggleSatellites: () => void
 }
 const useAppStore = create<State>((set)=>(
   {
     mode: '3D',
     selected: undefined,
+    showSatellites: true,
     setMode: (m)=>set({mode:m}),
-    select: (s)=>set({selected:s})
+    select: (s)=>set({selected:s}),
+    toggleSatellites: ()=>set((state)=>({showSatellites: !state.showSatellites}))
   }
 ))
 export default useAppStore
