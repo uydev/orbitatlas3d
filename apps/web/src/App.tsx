@@ -10,7 +10,7 @@ import SatList from './components/SatList'
 import useAppStore from './store/useAppStore'
 
 export default function App() {
-  const { mode } = useAppStore()
+  const { mode, sidebarOpen, toggleSidebar } = useAppStore()
   return (
     <div className="w-full h-screen bg-black text-white">
       <div className="absolute z-10 p-2 w-full flex gap-2">
@@ -24,7 +24,30 @@ export default function App() {
           <SatelliteLayer />
         </>
       ) : <Map2D />}
-      <div className="absolute right-0 top-0 h-full w-[380px] bg-black/50 backdrop-blur p-3 overflow-y-auto">
+      {/* Sidebar toggle button - always visible on right edge */}
+      <button
+        onClick={toggleSidebar}
+        className={`absolute top-1/2 -translate-y-1/2 z-20 px-2 py-4 bg-black/70 hover:bg-black/90 backdrop-blur rounded-l-lg border border-white/20 transition-all ${
+          sidebarOpen ? 'right-[380px]' : 'right-0'
+        }`}
+        title={sidebarOpen ? 'Hide panel' : 'Show panel'}
+      >
+        <span className="text-white text-sm">{sidebarOpen ? '◀' : '▶'}</span>
+      </button>
+      {/* Sidebar panel */}
+      <div className={`absolute right-0 top-0 h-full w-[380px] bg-black/50 backdrop-blur p-3 overflow-y-auto transition-transform duration-300 z-10 ${
+        sidebarOpen ? 'translate-x-0' : 'translate-x-full'
+      }`}>
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-lg font-semibold">Satellite Info</h2>
+          <button
+            onClick={toggleSidebar}
+            className="text-white/70 hover:text-white px-2 py-1 rounded"
+            title="Close panel"
+          >
+            ✕
+          </button>
+        </div>
         <InfoPanel />
         <SatList />
         <div className="mt-4">
