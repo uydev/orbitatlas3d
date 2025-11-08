@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 type Mode = '3D' | '2D'
-export type SatVisualMode = 'billboard' | 'dot' | 'hidden'
+export type SatVisualMode = 'billboard' | 'dot'
 export interface SatSummary {
   norad_id: number; name: string; owner_country?: string; constellation?: string;
 }

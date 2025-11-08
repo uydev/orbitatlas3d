@@ -81,7 +81,7 @@ export default function SatelliteLayer({ ids }: Props){
           // Path rendering conflicts with CallbackProperty position updates
           const showBillboard = satVisualMode === 'billboard'
           const showDot = satVisualMode === 'dot'
-          const showLabel = satVisualMode !== 'hidden'
+          const showLabel = true
           
           viewer.entities.add({
             id,

@@ -35,17 +35,6 @@ export default function Filters(){
           >
             Dots
           </button>
-          <button
-            className={`px-2 py-1 text-xs font-medium rounded transition ${
-              satVisualMode === 'hidden' 
-                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/40' 
-                : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-700 border border-transparent'
-            }`}
-            onClick={() => setSatVisualMode('hidden')}
-            title="Hide satellites"
-          >
-            Hidden
-          </button>
         </div>
       )}
     </div>
