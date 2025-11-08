@@ -25,8 +25,8 @@ services:
       HTTP_PROXY: ""
       CELESTRAK_VERIFY_SSL: "false"
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,db,cache,celestrak.org,celestrak.com}
-      SPACE_TRACK_USERNAME: ${SPACE_TRACK_USERNAME:?Set SPACE_TRACK_USERNAME}
-      SPACE_TRACK_PASSWORD: ${SPACE_TRACK_PASSWORD:?Set SPACE_TRACK_PASSWORD}
+      SPACE_TRACK_USERNAME: "uner.yilmaz@gmail.com"
+      SPACE_TRACK_PASSWORD: "ApolloThirteen13"
     depends_on: [db, cache]
     ports: ["8000:8000"]
     dns:
