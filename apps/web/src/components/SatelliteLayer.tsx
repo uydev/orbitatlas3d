@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites } = useAppStore()
+  const { selected, showSatellites, satVisualMode } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -79,14 +79,25 @@ export default function SatelliteLayer({ ids }: Props){
           
           // Create entity without path to avoid getValueInReferenceFrame issues
           // Path rendering conflicts with CallbackProperty position updates
+          const showBillboard = satVisualMode === 'billboard'
+          const showDot = satVisualMode === 'dot'
+          const showLabel = satVisualMode !== 'hidden'
+          
           viewer.entities.add({
             id,
             name: s.OBJECT_NAME,
             position,
             point: {
-              show: false
+              show: showDot,
+              pixelSize: 4,
+              color: Color.CYAN,
+              outlineColor: Color.BLACK,
+              outlineWidth: 1,
+              scaleByDistance: new NearFarScalar(5.0e4, 1.0, 3.0e7, 0.5),
+              disableDepthTestDistance: 1.0e8
             },
             label: {
+              show: showLabel,
               text: s.OBJECT_NAME,
               font: '14px "JetBrains Mono", "Fira Mono", monospace',
               fillColor: Color.WHITE,
@@ -98,6 +109,7 @@ export default function SatelliteLayer({ ids }: Props){
               disableDepthTestDistance: 1.0e8
             },
             billboard: {
+              show: showBillboard,
               image: '/icons/satellite.svg',
               width: 56,
               height: 56,
@@ -120,7 +132,7 @@ export default function SatelliteLayer({ ids }: Props){
     return () => {
       clearSatellites()
     }
-  }, [ids, showSatellites])
+  }, [ids, showSatellites, satVisualMode])
   // Track selected satellite
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 type Mode = '3D' | '2D'
+export type SatVisualMode = 'billboard' | 'dot' | 'hidden'
 export interface SatSummary {
   norad_id: number; name: string; owner_country?: string; constellation?: string;
 }
@@ -11,15 +12,19 @@ interface State {
   select: (s?: SatSummary) => void
   showSatellites: boolean
   toggleSatellites: () => void
+  satVisualMode: SatVisualMode
+  setSatVisualMode: (m: SatVisualMode) => void
 }
 const useAppStore = create<State>((set)=>(
   {
     mode: '3D',
     selected: undefined,
     showSatellites: true,
+    satVisualMode: 'billboard',
     setMode: (m)=>set({mode:m}),
     select: (s)=>set({selected:s}),
-    toggleSatellites: ()=>set((state)=>({showSatellites: !state.showSatellites}))
+    toggleSatellites: ()=>set((state)=>({showSatellites: !state.showSatellites})),
+    setSatVisualMode: (m)=>set({satVisualMode: m})
   }
 ))
 export default useAppStore
