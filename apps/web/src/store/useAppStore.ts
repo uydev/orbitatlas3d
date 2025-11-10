@@ -16,8 +16,6 @@ interface State {
   setSatVisualMode: (m: SatVisualMode) => void
   sidebarOpen: boolean
   toggleSidebar: () => void
-  searchQuery: string
-  setSearchQuery: (q: string) => void
 }
 const useAppStore = create<State>((set)=>(
   {
@@ -26,13 +24,11 @@ const useAppStore = create<State>((set)=>(
     showSatellites: true,
     satVisualMode: 'billboard',
     sidebarOpen: true,
-    searchQuery: '',
     setMode: (m)=>set({mode:m}),
     select: (s)=>set({selected:s}),
     toggleSatellites: ()=>set((state)=>({showSatellites: !state.showSatellites})),
     setSatVisualMode: (m)=>set({satVisualMode: m}),
-    toggleSidebar: ()=>set((state)=>({sidebarOpen: !state.sidebarOpen})),
-    setSearchQuery: (q)=>set({searchQuery: q})
+    toggleSidebar: ()=>set((state)=>({sidebarOpen: !state.sidebarOpen}))
   }
 ))
 export default useAppStore

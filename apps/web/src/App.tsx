@@ -1,6 +1,5 @@
 import Viewer3D from './components/Viewer3D'
 import Map2D from './components/Map2D'
-import SearchBar from './components/SearchBar'
 import Filters from './components/Filters'
 import InfoPanel from './components/InfoPanel'
 import VisibilityWidget from './components/VisibilityWidget'
@@ -14,7 +13,6 @@ export default function App() {
   return (
     <div className="w-full h-screen bg-black text-white">
       <div className="absolute z-10 p-2 w-full flex gap-2">
-        <SearchBar />
         <Filters />
         <HUDControls />
       </div>

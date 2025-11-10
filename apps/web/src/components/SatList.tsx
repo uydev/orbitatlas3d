@@ -7,7 +7,7 @@ export default function SatList(){
   const [error, setError] = useState<string|undefined>()
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
-  const { selected, select, searchQuery } = useAppStore()
+  const { selected, select } = useAppStore()
 
   useEffect(()=>{ void load() },[])
 
@@ -35,14 +35,13 @@ export default function SatList(){
   }
 
   const filtered = useMemo(()=>{
-    // Combine local search (q) with global search (searchQuery)
-    const combinedQuery = (q.trim() || searchQuery.trim()).toLowerCase()
-    if (!combinedQuery) return items
+    const query = q.trim().toLowerCase()
+    if (!query) return items
     return items.filter(s=> 
-      s.name.toLowerCase().includes(combinedQuery) || 
-      String(s.norad_id).includes(combinedQuery)
+      s.name.toLowerCase().includes(query) || 
+      String(s.norad_id).includes(query)
     )
-  }, [q, searchQuery, items])
+  }, [q, items])
 
   return (
     <div className="mt-3 text-sm">
