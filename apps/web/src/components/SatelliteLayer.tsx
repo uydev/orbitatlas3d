@@ -31,7 +31,7 @@ export default function SatelliteLayer({ ids }: Props){
     async function addSatellites() {
       let sats
       try {
-        sats = await fetchActive(150)
+        sats = await fetchActive(600) // SAT LIMIT
       } catch (e) {
         console.error('Failed to fetch satellites:', e)
         return

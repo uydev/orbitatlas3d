@@ -19,7 +19,7 @@ export default function SatList(){
       let lastErr: any
       for (let i=0;i<3;i++){
         try {
-          list = await fetchActive(300)
+          list = await fetchActive(1000) // SAT LIMIT
           if (Array.isArray(list) && list.length>0) break
         } catch(e){ lastErr = e }
         await new Promise(r=>setTimeout(r, (i+1)*800))

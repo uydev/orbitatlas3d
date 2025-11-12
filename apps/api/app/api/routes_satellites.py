@@ -8,6 +8,7 @@ import ssl
 import certifi
 import time
 import http.cookiejar
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -99,13 +100,13 @@ def _fetch_celestrak_group(group: str) -> list[dict]:
 SPACE_TRACK_USERNAME = os.getenv("SPACE_TRACK_USERNAME")
 SPACE_TRACK_PASSWORD = os.getenv("SPACE_TRACK_PASSWORD")
 SPACE_TRACK_TIMEOUT = float(os.getenv("SPACE_TRACK_TIMEOUT", "25"))
-SPACE_TRACK_LIMIT = int(os.getenv("SPACE_TRACK_LIMIT", "400"))
+SPACE_TRACK_LIMIT = int(os.getenv("SPACE_TRACK_LIMIT", "1000"))  # SAT LIMIT
 
 _CACHE_ACTIVE: dict[str, object] = {"expires": 0.0, "data": None}
 
 
 @router.get("/active")
-def list_active(limit: int = 200):
+def list_active(limit: int = 1000):  # SAT LIMIT
     """Proxy Celestrak active satellites (GP format) to avoid CORS/client JSON issues.
 
     IMPORTANT: This route must be defined BEFORE the '/{norad_id}' routes so
@@ -172,9 +173,12 @@ def _fetch_space_track(limit: int) -> list[dict]:
             raise RuntimeError(f"Space-Track login failed with status {resp.getcode()}")
     limit = min(limit or SPACE_TRACK_LIMIT, SPACE_TRACK_LIMIT)
     # Query tle_latest class which includes TLE1 and TLE2 fields
+    # Filter for recent TLEs (last 30 days) - URL encode the > symbol
+    now_minus_30 = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
+    epoch_filter = urllib.parse.quote(f">{now_minus_30}")
     tle_url = (
         "https://www.space-track.org/basicspacedata/query/"
-        f"class/tle_latest/ORDINAL/1/EPOCH/>now-30/format/json/metadata/false/limit/{limit}"
+        f"class/tle_latest/ORDINAL/1/EPOCH/{epoch_filter}/format/json/metadata/false/limit/{limit}"
     )
     tle_req = urllib.request.Request(tle_url, headers=headers)
     with opener.open(tle_req, timeout=SPACE_TRACK_TIMEOUT) as resp:
