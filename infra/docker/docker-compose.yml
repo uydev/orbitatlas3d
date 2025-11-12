@@ -21,8 +21,17 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/orbit
       REDIS_URL: redis://cache:6379/0
+      HTTPS_PROXY: ""
+      HTTP_PROXY: ""
+      CELESTRAK_VERIFY_SSL: "false"
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,db,cache,celestrak.org,celestrak.com}
+      SPACE_TRACK_USERNAME: "uner.yilmaz@gmail.com"
+      SPACE_TRACK_PASSWORD: "ApolloThirteen13"
     depends_on: [db, cache]
     ports: ["8000:8000"]
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
   web:
     build:

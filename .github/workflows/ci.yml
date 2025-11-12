@@ -17,7 +17,7 @@ jobs:
       - run: |
           pip install poetry
           cd apps/api && poetry install
-          pytest -q
+          poetry run pytest -q
 
 
 

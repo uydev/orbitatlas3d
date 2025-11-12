@@ -1,4 +1,5 @@
 import useAppStore from '../store/useAppStore'
+import * as Cesium from 'cesium'
 export default function HUDControls(){
   const { mode, setMode } = useAppStore()
   return (
@@ -9,7 +10,11 @@ export default function HUDControls(){
         const viewer = (window as any).CESIUM_VIEWER
         if (!viewer) return
         viewer.trackedEntity = undefined
-        if (viewer.camera.flyHome) viewer.camera.flyHome(1.5)
+        try {
+          viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(0, 0, 42000000), duration: 1.2 })
+        } catch {
+          if (viewer.camera.flyHome) viewer.camera.flyHome(1.5)
+        }
       }}>Globe</button>
     </div>
   )

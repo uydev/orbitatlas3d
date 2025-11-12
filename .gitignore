@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Cookies/temp files
+st_cookies.txt
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
