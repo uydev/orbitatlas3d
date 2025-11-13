@@ -6,9 +6,13 @@ export default function InfoPanel(){
   const [coords, setCoords] = useState<{lat:number, lon:number, alt:number}|undefined>()
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER
-    if (!viewer) return
+    if (!viewer || !viewer.entities || !viewer.clock) return
     const interval = setInterval(()=>{
       const tracked = viewer.trackedEntity
+      if (!viewer || !viewer.entities || !viewer.clock) {
+        setCoords(undefined)
+        return
+      }
       const target = tracked || (selected ? viewer.entities.getById(`sat-${selected.norad_id}`) : undefined)
       if (!target || !target.position) { setCoords(undefined); return }
       const time = viewer.clock.currentTime

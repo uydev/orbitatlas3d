@@ -16,12 +16,14 @@ export default function App() {
         <Filters />
         <HUDControls />
       </div>
-      {mode === '3D' ? (
-        <>
-          <Viewer3D />
-          <SatelliteLayer />
-        </>
-      ) : <Map2D />}
+      {/* Always render both, use CSS to show/hide */}
+      <div className={mode === '3D' ? 'w-full h-full' : 'hidden'}>
+        <Viewer3D />
+        <SatelliteLayer />
+      </div>
+      <div className={mode === '2D' ? 'absolute inset-0' : 'hidden'} style={{ top: '48px' }}>
+        <Map2D />
+      </div>
       {/* Sidebar toggle button - always visible on right edge */}
       <button
         onClick={toggleSidebar}
