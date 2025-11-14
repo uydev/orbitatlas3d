@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -129,10 +129,26 @@ export default function SatelliteLayer({ ids }: Props){
       viewer.trackedEntity = undefined
     }
     addSatellites()
+    // Sync Cesium selection -> global store so 3D -> 2D works
+    const onSelectedChanged = () => {
+      try {
+        const ent = viewer.selectedEntity
+        if (!ent || typeof ent.id !== 'string') return
+        if (!ent.id.startsWith(SAT_PREFIX)) return
+        const norad = parseInt(ent.id.slice(SAT_PREFIX.length), 10)
+        if (Number.isFinite(norad)) {
+          select({ norad_id: norad, name: ent.name || String(norad) })
+        }
+      } catch {
+        // ignore
+      }
+    }
+    viewer.selectedEntityChanged?.addEventListener?.(onSelectedChanged)
     return () => {
+      try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
     }
-  }, [ids, showSatellites, satVisualMode])
+  }, [ids, showSatellites, satVisualMode, select])
   // Track selected satellite
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER
