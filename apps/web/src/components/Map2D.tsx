@@ -11,9 +11,22 @@ import useAppStore from '../store/useAppStore'
 export default function Map2D() {
   const mapRef = useRef<L.Map | null>(null)
   const mapContainerRef = useRef<HTMLDivElement>(null)
-  const markersRef = useRef<Map<number, L.CircleMarker>>(new Map())
+  const markersRef = useRef<Map<number, L.Layer>>(new Map())
+  const observerMarkerRef = useRef<L.Layer | null>(null)
+  const tracksRef = useRef<Map<number, L.Polyline>>(new Map())
   const [loading, setLoading] = useState(true)
-  const { selected, select, showSatellites, mode } = useAppStore()
+  const [visibleCount, setVisibleCount] = useState(0)
+  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar } = useAppStore()
+  function getIcon(selected: boolean){
+    const size = selected ? 26 : 20
+    const cls = selected ? 'oa-sat-icon oa-sat-icon--selected' : 'oa-sat-icon'
+    return L.divIcon({
+      className: '',
+      html: `<div class="${cls}" style="width:${size}px;height:${size}px"></div>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2]
+    })
+  }
 
   // Initialize map
   useEffect(() => {
@@ -109,6 +122,8 @@ export default function Map2D() {
         mapRef.current?.removeLayer(marker)
       })
       markersRef.current.clear()
+      tracksRef.current.forEach((line)=>mapRef.current?.removeLayer(line))
+      tracksRef.current.clear()
       return
     }
 
@@ -126,19 +141,14 @@ export default function Map2D() {
 
         // Clear existing markers
         markersRef.current.forEach((marker) => {
-          map.removeLayer(marker)
+          map.removeLayer(marker as any)
         })
         markersRef.current.clear()
+        tracksRef.current.forEach((line)=>map.removeLayer(line))
+        tracksRef.current.clear()
 
         const now = new Date()
-        const jday = sat.jday(
-          now.getUTCFullYear(),
-          now.getUTCMonth() + 1,
-          now.getUTCDate(),
-          now.getUTCHours(),
-          now.getUTCMinutes(),
-          now.getUTCSeconds()
-        )
+        const gmst = sat.gstime(now)
 
         // Add satellites to map
         sats.forEach((s) => {
@@ -154,16 +164,34 @@ export default function Map2D() {
               return
             }
             
-            const positionAndVelocity = sat.propagate(rec, jday)
+            const positionAndVelocity = sat.propagate(rec, now)
 
             if (positionAndVelocity.position && !positionAndVelocity.error) {
               const positionEci = positionAndVelocity.position as sat.EciVec3<number>
-              const gmst = sat.gstime(jday)
               const positionGd = sat.eciToGeodetic(positionEci, gmst)
 
               let lat = sat.degreesLat(positionGd.latitude)
               let lon = sat.degreesLong(positionGd.longitude)
               const alt = positionGd.height / 1000 // Convert to km
+
+              // If observer and overheadOnly are set, compute elevation at observer and filter
+              if (observer && overheadOnly) {
+                try {
+                  const satEcf = sat.eciToEcf(positionEci, gmst)
+                  const obs = {
+                    longitude: observer.lon * Math.PI / 180,
+                    latitude: observer.lat * Math.PI / 180,
+                    height: 0
+                  }
+                  const look = sat.ecfToLookAngles(obs as any, satEcf as any)
+                  const elevDeg = look.elevation * 180 / Math.PI
+                  if (elevDeg <= 0) {
+                    return
+                  }
+                } catch {
+                  // ignore visibility calc failures
+                }
+              }
 
               // Validate coordinates are valid numbers
               if (isNaN(lat) || isNaN(lon) || !isFinite(lat) || !isFinite(lon)) {
@@ -190,54 +218,84 @@ export default function Map2D() {
                 }
               }
 
-              // Create circle marker
-              const marker = L.circleMarker([lat, lon], {
-                radius: 4,
-                fillColor: '#66ccff',
-                color: '#ffffff',
-                weight: 1,
-                opacity: 0.8,
-                fillOpacity: 0.6,
-              })
+              let marker: L.Layer
+              if (satVisualMode === 'dot') {
+                marker = L.circleMarker([lat, lon], {
+                  radius: 4,
+                  fillColor: observer ? '#88e0ff' : '#66ccff',
+                  color: '#ffffff',
+                  weight: 1,
+                  opacity: 0.8,
+                  fillOpacity: 0.6,
+                })
+              } else {
+                marker = L.marker([lat, lon], { icon: getIcon(false), zIndexOffset: 100 })
+              }
+              if (showLabels2D) {
+                marker.bindTooltip(s.OBJECT_NAME || String(s.NORAD_CAT_ID), {
+                  permanent: true,
+                  direction: 'top',
+                  offset: L.point(0, -8),
+                  className: 'leaflet-sat-label'
+                })
+              }
 
-              // Add popup with satellite info
-              const popup = L.popup({
-                maxWidth: 200,
-              }).setContent(`
-                <div style="font-size: 12px;">
-                  <strong>${s.OBJECT_NAME || 'Unknown'}</strong><br/>
-                  NORAD: ${s.NORAD_CAT_ID}<br/>
-                  Alt: ${alt.toFixed(1)} km<br/>
-                  <button 
-                    style="margin-top: 4px; padding: 2px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;"
-                    onclick="window.selectSatellite(${s.NORAD_CAT_ID}, '${s.OBJECT_NAME?.replace(/'/g, "\\'") || 'Unknown'}')"
-                  >
-                    Select
-                  </button>
-                </div>
-              `)
-
-              marker.bindPopup(popup)
+              // No popup; selection displayed in side panel
 
               // Handle click to select satellite
-              marker.on('click', () => {
+              ;(marker as any).on?.('click', () => {
+                // Open the side panel if it is closed to mirror 3D UX
+                if (!sidebarOpen) toggleSidebar()
                 select({
                   norad_id: s.NORAD_CAT_ID,
                   name: s.OBJECT_NAME || 'Unknown',
+                  tle1: s.TLE_LINE1,
+                  tle2: s.TLE_LINE2,
                 })
               })
 
-              marker.addTo(map)
+              ;(marker as any).addTo(map)
               markersRef.current.set(s.NORAD_CAT_ID, marker)
+
+              // Optional ground track (simple forward-only, short)
+              if (showTracks2D) {
+                try {
+                  const points: [number, number][] = []
+                  for (let minutes = 0; minutes <= 30; minutes += 2) {
+                    const t = new Date(now.getTime() + minutes * 60 * 1000)
+                    const gmstStep = sat.gstime(t)
+                    const pv2 = sat.propagate(rec, t)
+                    if (pv2.position) {
+                      const gd2 = sat.eciToGeodetic(pv2.position as any, gmstStep)
+                      const lat2 = sat.degreesLat(gd2.latitude)
+                      let lon2 = sat.degreesLong(gd2.longitude)
+                      if (lon2 < -180 || lon2 > 180) {
+                        lon2 = ((lon2 % 360) + 360) % 360
+                        if (lon2 > 180) lon2 -= 360
+                      }
+                      points.push([lat2, lon2])
+                    }
+                  }
+                  if (points.length >= 2) {
+                    const line = L.polyline(points, { color: '#00ffff', opacity: 0.5, weight: 1 })
+                    line.addTo(map)
+                    tracksRef.current.set(s.NORAD_CAT_ID, line)
+                  }
+                } catch {}
+              }
             }
           } catch (e) {
             console.warn(`Error processing satellite ${s.NORAD_CAT_ID}:`, e)
           }
         })
 
+        setVisibleCount(markersRef.current.size)
+
         // Expose select function to window for popup buttons
-        ;(window as any).selectSatellite = (noradId: number, name: string) => {
-          select({ norad_id: noradId, name })
+        // Legacy helper no longer used (popups removed), keep as no-op safe bridge
+        ;(window as any).selectSatellite = (noradId: number, name: string, tle1?: string, tle2?: string) => {
+          if (!sidebarOpen) toggleSidebar()
+          select({ norad_id: noradId, name, tle1, tle2 })
         }
 
         setLoading(false)
@@ -261,33 +319,69 @@ export default function Map2D() {
       // Cleanup window function
       delete (window as any).selectSatellite
     }
-  }, [showSatellites, select])
+  }, [showSatellites, select, observer, overheadOnly, showLabels2D, showTracks2D])
+
+  // Show observer marker and recenter
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    // Remove existing
+    if (observerMarkerRef.current) {
+      map.removeLayer(observerMarkerRef.current)
+      observerMarkerRef.current = null
+    }
+    if (!observer) return
+    const marker = L.circleMarker([observer.lat, observer.lon], {
+      radius: 6,
+      fillColor: '#ffd800',
+      color: '#ffffff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.9,
+    })
+    marker.bindPopup(`<div style="font-size:12px;"><strong>Observer</strong><br/>${observer.name || ''}</div>`)
+    marker.addTo(map)
+    observerMarkerRef.current = marker
+    try {
+      map.setView([observer.lat, observer.lon], Math.max(map.getZoom(), 4))
+    } catch {}
+  }, [observer])
 
   // Highlight selected satellite
   useEffect(() => {
     if (!mapRef.current || !selected) return
 
     markersRef.current.forEach((marker, noradId) => {
-      if (noradId === selected.norad_id) {
-        marker.setStyle({
-          radius: 6,
-          fillColor: '#ffd800',
-          color: '#ffffff',
-          weight: 2,
-          opacity: 1,
-          fillOpacity: 0.8,
-        })
-        marker.openPopup()
-        mapRef.current?.setView(marker.getLatLng(), Math.max(mapRef.current.getZoom(), 4))
-      } else {
-        marker.setStyle({
-          radius: 4,
-          fillColor: '#66ccff',
-          color: '#ffffff',
-          weight: 1,
-          opacity: 0.8,
-          fillOpacity: 0.6,
-        })
+      if ((marker as any).setStyle) {
+        if (noradId === selected.norad_id) {
+          ;(marker as L.CircleMarker).setStyle({
+            radius: 6,
+            fillColor: '#ffd800',
+            color: '#ffffff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.8,
+          })
+          ;(marker as any).openPopup?.()
+          mapRef.current?.setView((marker as L.CircleMarker).getLatLng(), Math.max(mapRef.current.getZoom(), 4))
+        } else {
+          ;(marker as L.CircleMarker).setStyle({
+            radius: 4,
+            fillColor: '#66ccff',
+            color: '#ffffff',
+            weight: 1,
+            opacity: 0.8,
+            fillOpacity: 0.6,
+          })
+        }
+      } else if ((marker as any).setIcon) {
+        if (noradId === selected.norad_id) {
+          ;(marker as L.Marker).setIcon(getIcon(true))
+          ;(marker as any).openPopup?.()
+          mapRef.current?.setView((marker as L.Marker).getLatLng(), Math.max(mapRef.current.getZoom(), 4))
+        } else {
+          ;(marker as L.Marker).setIcon(getIcon(false))
+        }
       }
     })
   }, [selected])
@@ -299,9 +393,21 @@ export default function Map2D() {
         className="w-full h-full" 
         style={{ width: '100%', height: '100%', minHeight: '400px' }}
       />
-      {loading && showSatellites && (
-        <div className="absolute top-4 left-4 bg-black/70 text-white px-3 py-2 rounded text-sm z-50">
-          Loading satellites...
+      {(loading && showSatellites) && (
+        <div className="absolute top-4 left-4 bg-black/70 text-white px-3 py-2 rounded text-sm z-50">Loading satellites...</div>
+      )}
+      {showSatellites && !loading && (
+        <div className="absolute top-4 left-4 bg-black/70 text-white px-3 py-2 rounded text-sm z-50 space-y-1">
+          <div>Satellites on map: {visibleCount}</div>
+          {overheadOnly && !observer && (
+            <div className="opacity-80">Set a location to use “Overhead only”.</div>
+          )}
+          {overheadOnly && observer && visibleCount === 0 && (
+            <div className="opacity-80">No satellites above the horizon right now at {observer.name || `${observer.lat.toFixed(2)}, ${observer.lon.toFixed(2)}`}</div>
+          )}
+          {overheadOnly && observer && visibleCount > 0 && (
+            <div className="opacity-80">Overhead at {observer.name || `${observer.lat.toFixed(2)}, ${observer.lon.toFixed(2)}`}</div>
+          )}
         </div>
       )}
     </div>

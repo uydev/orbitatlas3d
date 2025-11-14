@@ -3,5 +3,14 @@
 @tailwind utilities;
 html, body, #root { height: 100%; }
 
+/* Simple 2D satellite icon using the public svg */
+.oa-sat-icon {
+  background: url('/icons/satellite.svg') no-repeat center center / contain;
+  filter: drop-shadow(0 0 2px rgba(0,255,255,0.7));
+}
+.oa-sat-icon--selected {
+  filter: drop-shadow(0 0 4px rgba(255,216,0,0.9)) saturate(1.2);
+}
+
 
 

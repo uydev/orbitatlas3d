@@ -35,7 +35,7 @@ export default function App() {
         <span className="text-white text-sm">{sidebarOpen ? '◀' : '▶'}</span>
       </button>
       {/* Sidebar panel */}
-      <div className={`absolute right-0 top-0 h-full w-[380px] bg-black/50 backdrop-blur p-3 overflow-y-auto transition-transform duration-300 z-10 ${
+      <div className={`absolute right-0 top-0 h-full w-[380px] bg-black/50 backdrop-blur p-3 overflow-y-auto transition-transform duration-300 z-[1000] ${
         sidebarOpen ? 'translate-x-0' : 'translate-x-full'
       }`}>
         <div className="flex justify-between items-center mb-2">

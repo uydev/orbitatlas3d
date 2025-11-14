@@ -6,27 +6,20 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, mode } = useAppStore()
-  
+  const { selected, showSatellites, satVisualMode } = useAppStore()
   useEffect(() => {
-    // Only run in 3D mode
-    if (mode !== '3D') return
-    
     const viewer = (window as any).CESIUM_VIEWER
-    if (!viewer || !viewer.entities) return
+    if (!viewer) return
     const clearSatellites = () => {
-      const currentViewer = (window as any).CESIUM_VIEWER
-      if (!currentViewer || !currentViewer.entities) return
       const toRemove: string[] = []
-      currentViewer.entities.values.forEach((entity: any) => {
+      viewer.entities.values.forEach((entity: any) => {
         if (typeof entity.id === 'string' && entity.id.startsWith(SAT_PREFIX)) {
           toRemove.push(entity.id)
         }
       })
       toRemove.forEach((id)=>{
-        if (!currentViewer.entities) return
-        const e = currentViewer.entities.getById(id)
-        if (e) currentViewer.entities.remove(e)
+        const e = viewer.entities.getById(id)
+        if (e) viewer.entities.remove(e)
       })
     }
     if (!showSatellites) {
@@ -36,9 +29,6 @@ export default function SatelliteLayer({ ids }: Props){
     clearSatellites()
     const createdIds: string[] = []
     async function addSatellites() {
-      // Check viewer is still available (might be destroyed during async operation)
-      if (!viewer || !viewer.entities) return
-      
       let sats
       try {
         sats = await fetchActive(600) // SAT LIMIT
@@ -50,16 +40,9 @@ export default function SatelliteLayer({ ids }: Props){
         console.warn('No satellites returned from API')
         return
       }
-      
-      // Check again after async operation
-      if (!viewer || !viewer.entities) return
-      
       console.log(`Adding ${sats.length} satellites to viewer`)
       for (const s of sats) {
         try {
-          // Check viewer is still available in each iteration
-          if (!viewer || !viewer.entities) break
-          
           if (!s.TLE_LINE1 || !s.TLE_LINE2) {
             console.warn(`Missing TLE for ${s.OBJECT_NAME || s.NORAD_CAT_ID}`)
             continue
@@ -73,7 +56,6 @@ export default function SatelliteLayer({ ids }: Props){
           // Create position callback that always returns a valid position
           const position = new CallbackProperty((time: any) => {
             try {
-              if (!viewer || !viewer.clock) return Cartesian3.fromDegrees(0, 0, 0)
               const now = JulianDate.toDate(time || viewer.clock.currentTime)
               const pv = sat.propagate(rec, now)
               if (!pv.position || pv.error) {
@@ -144,22 +126,17 @@ export default function SatelliteLayer({ ids }: Props){
           // ignore individual failures
         }
       }
-      if (viewer) {
-        viewer.trackedEntity = undefined
-      }
+      viewer.trackedEntity = undefined
     }
     addSatellites()
     return () => {
       clearSatellites()
     }
-  }, [ids, showSatellites, satVisualMode, mode])
+  }, [ids, showSatellites, satVisualMode])
   // Track selected satellite
   useEffect(()=>{
-    // Only run in 3D mode
-    if (mode !== '3D') return
-    
     const viewer = (window as any).CESIUM_VIEWER
-    if (!viewer || !viewer.entities) return
+    if (!viewer) return
     if (selected) {
       const entityId = `${SAT_PREFIX}${selected.norad_id}`
       const e = viewer.entities.getById(entityId)
@@ -173,7 +150,7 @@ export default function SatelliteLayer({ ids }: Props){
         })
       }
     }
-  }, [selected, mode])
+  }, [selected])
   return null
 }
 
