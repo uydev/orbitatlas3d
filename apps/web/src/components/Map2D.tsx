@@ -16,6 +16,7 @@ export default function Map2D() {
   const tracksRef = useRef<Map<number, L.Polyline>>(new Map())
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
+  const [mapReady, setMapReady] = useState(false)
   const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar } = useAppStore()
   function getIcon(selected: boolean){
     const size = selected ? 26 : 20
@@ -67,6 +68,7 @@ export default function Map2D() {
         }).addTo(map)
 
         mapRef.current = map
+        setMapReady(true)
 
         // Invalidate size to ensure map renders correctly
         setTimeout(() => {
@@ -114,7 +116,7 @@ export default function Map2D() {
 
   // Fetch and display satellites
   useEffect(() => {
-    if (!mapRef.current) return
+    if (!mapRef.current || !mapReady) return
     
     if (!showSatellites) {
       // Clear markers if satellites are hidden
@@ -319,7 +321,7 @@ export default function Map2D() {
       // Cleanup window function
       delete (window as any).selectSatellite
     }
-  }, [showSatellites, select, observer, overheadOnly, showLabels2D, showTracks2D])
+  }, [mapReady, showSatellites, select, observer, overheadOnly, showLabels2D, showTracks2D])
 
   // Show observer marker and recenter
   useEffect(() => {
