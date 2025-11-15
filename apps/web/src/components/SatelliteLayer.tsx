@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -81,7 +81,7 @@ export default function SatelliteLayer({ ids }: Props){
           // Path rendering conflicts with CallbackProperty position updates
           const showBillboard = satVisualMode === 'billboard'
           const showDot = satVisualMode === 'dot'
-          const showLabel = true
+          const showLabel = !!showLabels2D
           
           viewer.entities.add({
             id,
@@ -148,7 +148,7 @@ export default function SatelliteLayer({ ids }: Props){
       try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
     }
-  }, [ids, showSatellites, satVisualMode, select])
+  }, [ids, showSatellites, satVisualMode, select, showLabels2D])
   // Track selected satellite
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER

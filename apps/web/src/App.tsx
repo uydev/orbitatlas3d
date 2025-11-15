@@ -12,7 +12,7 @@ export default function App() {
   const { mode, sidebarOpen, toggleSidebar } = useAppStore()
   return (
     <div className="w-full h-screen bg-black text-white">
-      <div className="absolute z-10 p-2 w-full flex gap-2">
+      <div className="absolute z-[3000] p-2 w-full flex gap-2">
         <Filters />
         <HUDControls />
       </div>

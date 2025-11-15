@@ -22,7 +22,7 @@ export default function Filters(){
         ⚙
       </button>
       {showConfig && (
-        <div className="absolute top-[110%] left-2 z-50 bg-zinc-900/95 border border-white/10 rounded p-2 shadow-md">
+        <div className="fixed top-[52px] left-2 z-[2000] bg-zinc-900/95 border border-white/10 rounded p-2 shadow-md">
           <div className="text-xs font-semibold opacity-80 mb-1">Map settings</div>
           <label className="flex items-center gap-2 text-xs opacity-90 select-none py-0.5">
             <input type="checkbox" checked={showLabels2D} onChange={toggleLabels2D} />
