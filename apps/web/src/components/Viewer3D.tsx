@@ -18,16 +18,16 @@ export default function Viewer3D(){
         tabRow.className = 'oa-extra-tabs'
         tabRow.style.cssText = 'margin-top:6px; display:flex; gap:6px;'
 
-        const makeCesiumButton = (label: string) => {
+        const makeCesiumButton = (label: string, extraClass?: string) => {
           const b = document.createElement('button')
           b.type = 'button'
           b.textContent = label
-          b.className = 'cesium-navigation-button cesium-navigation-button-unselected'
+          b.className = `cesium-navigation-button cesium-navigation-button-unselected ${extraClass || ''}`.trim()
           return b
         }
-        const btnKeyboard = makeCesiumButton('Keyboard')
+        const btnKeyboard = makeCesiumButton('Keyboard', 'cesium-navigation-button-left')
         const btnAbout = makeCesiumButton('About')
-        const btnLayers = makeCesiumButton('Layers')
+        const btnLayers = makeCesiumButton('Layers', 'cesium-navigation-button-right')
         tabRow.append(btnKeyboard, btnAbout, btnLayers)
 
         // Instruction containers matching Cesium's help blocks
@@ -36,45 +36,47 @@ export default function Viewer3D(){
         secKeyboard.className = 'cesium-navigation-help-instructions oa-help-section'
         secKeyboard.style.cssText = sectionStyle
         secKeyboard.innerHTML = `
-          <table style="width:100%;color:#fff;opacity:.95">
-            <tbody>
-              <tr><td colspan="2" style="font-weight:600;padding:2px 0">Global</td></tr>
-              <tr><td style="width:18px">•</td><td>Esc: Close info panel</td></tr>
-              <tr><td>•</td><td>2 / 3: Switch to 2D / 3D</td></tr>
-              <tr><td>•</td><td>Shift: Faster movement</td></tr>
-              <tr><td colspan="2" style="height:6px"></td></tr>
-              <tr><td colspan="2" style="font-weight:600;padding:2px 0">2D (Map)</td></tr>
-              <tr><td>•</td><td>W/A/S/D or Arrows: Pan</td></tr>
-              <tr><td>•</td><td>+ / - : Zoom in / out</td></tr>
-              <tr><td colspan="2" style="height:6px"></td></tr>
-              <tr><td colspan="2" style="font-weight:600;padding:2px 0">3D (Globe)</td></tr>
-              <tr><td>•</td><td>W/A/S/D or Arrows: Move camera</td></tr>
-              <tr><td>•</td><td>+ / - : Move forward / backward</td></tr>
-              <tr><td>•</td><td>R: Rotate right around view (Shift = faster)</td></tr>
-            </tbody>
-          </table>`
+          <div style="color:#fff;opacity:.95;line-height:1.35">
+            <div style="font-weight:600;margin:2px 0">Global</div>
+            <ul style="margin:0 0 6px 18px;padding:0;list-style:disc">
+              <li style="margin:0 0 2px 0">Esc: Close info panel</li>
+              <li style="margin:0 0 2px 0">2 / 3: Switch to 2D / 3D</li>
+              <li style="margin:0 0 2px 0">Shift: Faster movement</li>
+            </ul>
+            <div style="font-weight:600;margin:2px 0">2D (Map)</div>
+            <ul style="margin:0 0 6px 18px;padding:0;list-style:disc">
+              <li style="margin:0 0 2px 0">W/A/S/D or Arrows: Pan</li>
+              <li style="margin:0 0 2px 0">+ / - : Zoom in / out</li>
+            </ul>
+            <div style="font-weight:600;margin:2px 0">3D (Globe)</div>
+            <ul style="margin:0 0 0 18px;padding:0;list-style:disc">
+              <li style="margin:0 0 2px 0">W/A/S/D or Arrows: Move camera</li>
+              <li style="margin:0 0 2px 0">+ / - : Move forward / backward</li>
+              <li style="margin:0 0 0 0">R: Rotate right around view (Shift = faster)</li>
+            </ul>
+          </div>`
 
         const secAbout = document.createElement('div')
         secAbout.className = 'cesium-navigation-help-instructions oa-help-section'
         secAbout.style.cssText = sectionStyle
         secAbout.innerHTML = `
-          <table style="width:100%;color:#fff;opacity:.95">
-            <tbody>
-              <tr><td colspan="2" style="font-weight:600;padding:2px 0">OrbitAtlas</td></tr>
-              <tr><td>•</td><td>Explore satellites in 3D and 2D; select to view details in the sidebar.</td></tr>
-            </tbody>
-          </table>`
+          <div style="color:#fff;opacity:.95;line-height:1.35">
+            <div style="font-weight:700;margin:2px 0 6px 0">OrbitAtlas</div>
+            <ul style="margin:0 0 0 18px;padding:0;list-style:disc">
+              <li>Explore satellites in 3D and 2D; select to view details in the sidebar.</li>
+            </ul>
+          </div>`
 
         const secLayers = document.createElement('div')
         secLayers.className = 'cesium-navigation-help-instructions oa-help-section'
         secLayers.style.cssText = sectionStyle
         secLayers.innerHTML = `
-          <table style="width:100%;color:#fff;opacity:.95">
-            <tbody>
-              <tr><td>•</td><td>Use the gear icon to toggle Labels, Tracks, Icon/Dot markers.</td></tr>
-              <tr><td>•</td><td>“Hide satellites behind planet (3D)” enables depth occlusion.</td></tr>
-            </tbody>
-          </table>`
+          <div style="color:#fff;opacity:.95;line-height:1.35">
+            <ul style="margin:0 0 0 18px;padding:0;list-style:disc">
+              <li style="margin:0 0 2px 0">Use the gear icon to toggle Labels, Tracks, Icon/Dot markers.</li>
+              <li>“Hide satellites behind planet (3D)” enables depth occlusion.</li>
+            </ul>
+          </div>`
 
         // Helper to show one of our sections
         const showSection = (target: HTMLElement, btn: HTMLButtonElement) => {
@@ -122,8 +124,21 @@ export default function Viewer3D(){
         helpRoot.appendChild(secAbout)
         helpRoot.appendChild(secLayers)
 
-        // Default to Keyboard tab visible
-        showSection(secKeyboard, btnKeyboard)
+        // Default to Keyboard tab visible whenever help is opened
+        const defaultKeyboard = () => showSection(secKeyboard, btnKeyboard)
+        defaultKeyboard()
+
+        // Re-apply default each time the help popup becomes visible
+        const helpVisibleObserver = new MutationObserver(() => {
+          if (helpRoot.classList.contains('cesium-navigation-help-visible')) {
+            defaultKeyboard()
+          }
+        })
+        helpVisibleObserver.observe(helpRoot, { attributes: true, attributeFilter: ['class'] })
+
+        // Also attach to the toolbar '?' button if present
+        const helpToggleBtn = container.querySelector('.cesium-navigation-help-button') as HTMLButtonElement | null
+        helpToggleBtn?.addEventListener('click', () => setTimeout(defaultKeyboard, 0))
       }
       const observer = new MutationObserver(()=>inject())
       observer.observe(container, { childList: true, subtree: true })
