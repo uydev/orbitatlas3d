@@ -69,6 +69,7 @@ export default function Map2D() {
 
         mapRef.current = map
         setMapReady(true)
+        ;(window as any).LEAFLET_MAP = map
 
         // Invalidate size to ensure map renders correctly
         setTimeout(() => {

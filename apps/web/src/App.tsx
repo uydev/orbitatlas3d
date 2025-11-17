@@ -7,9 +7,45 @@ import HUDControls from './components/HUDControls'
 import SatelliteLayer from './components/SatelliteLayer'
 import SatList from './components/SatList'
 import useAppStore from './store/useAppStore'
+import { useEffect } from 'react'
+import Help from './components/Help'
 
 export default function App() {
-  const { mode, sidebarOpen, toggleSidebar } = useAppStore()
+  const { mode, sidebarOpen, toggleSidebar, setSidebarOpen, setMode } = useAppStore()
+  useEffect(()=>{
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setSidebarOpen(false); return }
+      if (e.key === '2') { setMode('2D'); return }
+      if (e.key === '3') { setMode('3D'); return }
+      const fast = e.shiftKey
+      const viewer: any = (window as any).CESIUM_VIEWER
+      const map: any = (window as any).LEAFLET_MAP
+      if (mode === '2D' && map) {
+        const px = fast ? 200 : 100
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') map.panBy([-px, 0])
+        else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') map.panBy([px, 0])
+        else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') map.panBy([0, -px])
+        else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') map.panBy([0, px])
+        else if (e.key === '+' || e.key === '=') map.zoomIn(fast ? 2 : 1)
+        else if (e.key === '-' || e.key === '_') map.zoomOut(fast ? 2 : 1)
+      } else if (mode === '3D' && viewer?.camera) {
+        const cam = viewer.camera
+        const dist = fast ? 2.0e6 : 5.0e5
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') cam.moveLeft(dist)
+        else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') cam.moveRight(dist)
+        else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') cam.moveForward(dist)
+        else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') cam.moveBackward(dist)
+        else if (e.key === '+' || e.key === '=') cam.moveForward(dist)
+        else if (e.key === '-' || e.key === '_') cam.moveBackward(dist)
+        else if (e.key === 'r' || e.key === 'R') {
+          const angle = (fast ? 20 : 10) * Math.PI / 180
+          try { cam.rotateRight(angle) } catch { try { cam.twistRight?.(angle) } catch {} }
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return ()=>window.removeEventListener('keydown', onKey)
+  }, [mode, setSidebarOpen, setMode])
   return (
     <div className="w-full h-screen bg-black text-white">
       <div className="absolute z-[3000] p-2 w-full flex gap-2 pointer-events-none">
@@ -18,6 +54,9 @@ export default function App() {
         </div>
         <div className="pointer-events-auto">
           <HUDControls />
+        </div>
+        <div className="pointer-events-auto">
+          <Help />
         </div>
       </div>
       {/* Always render both, use CSS to show/hide */}
