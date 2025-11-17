@@ -30,6 +30,8 @@ interface State {
   toggleLabels2D: () => void
   showTracks2D: boolean
   toggleTracks2D: () => void
+  occlude3D: boolean
+  toggleOcclude3D: () => void
 }
 const useAppStore = create<State>((set)=>(
   {
@@ -42,6 +44,7 @@ const useAppStore = create<State>((set)=>(
     overheadOnly: false,
     showLabels2D: false,
     showTracks2D: true,
+    occlude3D: false,
     setMode: (m)=>set({mode:m}),
     select: (s)=>set((state)=>({
       selected: s,
@@ -55,7 +58,8 @@ const useAppStore = create<State>((set)=>(
     setObserver: (o)=>set({observer: o}),
     toggleOverheadOnly: ()=>set((state)=>({overheadOnly: !state.overheadOnly})),
     toggleLabels2D: ()=>set((state)=>({showLabels2D: !state.showLabels2D})),
-    toggleTracks2D: ()=>set((state)=>({showTracks2D: !state.showTracks2D}))
+    toggleTracks2D: ()=>set((state)=>({showTracks2D: !state.showTracks2D})),
+    toggleOcclude3D: ()=>set((state)=>({occlude3D: !state.occlude3D}))
   }
 ))
 export default useAppStore

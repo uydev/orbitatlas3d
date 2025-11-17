@@ -2,7 +2,7 @@ import useAppStore from '../store/useAppStore'
 import { useState } from 'react'
 
 export default function Filters(){
-  const { showSatellites, toggleSatellites, satVisualMode, setSatVisualMode, showLabels2D, toggleLabels2D, showTracks2D, toggleTracks2D } = useAppStore()
+  const { showSatellites, toggleSatellites, satVisualMode, setSatVisualMode, showLabels2D, toggleLabels2D, showTracks2D, toggleTracks2D, occlude3D, toggleOcclude3D } = useAppStore()
   const [showConfig, setShowConfig] = useState(false)
   return (
     <div className="flex items-center gap-3 px-3 py-1 rounded bg-zinc-800 relative">
@@ -31,6 +31,10 @@ export default function Filters(){
           <label className="flex items-center gap-2 text-xs opacity-90 select-none py-0.5">
             <input type="checkbox" checked={showTracks2D} onChange={toggleTracks2D} />
             Show tracks
+          </label>
+          <label className="flex items-center gap-2 text-xs opacity-90 select-none py-0.5">
+            <input type="checkbox" checked={occlude3D} onChange={toggleOcclude3D} />
+            Hide satellites behind planet (3D)
           </label>
         </div>
       )}

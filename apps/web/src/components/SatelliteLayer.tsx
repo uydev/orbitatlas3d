@@ -6,10 +6,13 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
+    try {
+      viewer.scene.globe.depthTestAgainstTerrain = !!occlude3D
+    } catch {}
     const clearSatellites = () => {
       const toRemove: string[] = []
       viewer.entities.values.forEach((entity: any) => {
@@ -94,7 +97,7 @@ export default function SatelliteLayer({ ids }: Props){
               outlineColor: Color.BLACK,
               outlineWidth: 1,
               scaleByDistance: new NearFarScalar(5.0e4, 1.0, 3.0e7, 0.5),
-              disableDepthTestDistance: 1.0e8
+              disableDepthTestDistance: occlude3D ? 0.0 : 1.0e8
             },
             label: {
               show: showLabel,
@@ -106,7 +109,7 @@ export default function SatelliteLayer({ ids }: Props){
               style: LabelStyle.FILL_AND_OUTLINE,
               pixelOffset: new Cartesian2(0, -58),
               scaleByDistance: new NearFarScalar(5.0e4, 1.4, 3.0e7, 0.22),
-              disableDepthTestDistance: 1.0e8
+              disableDepthTestDistance: occlude3D ? 0.0 : 1.0e8
             },
             billboard: {
               show: showBillboard,
@@ -117,7 +120,7 @@ export default function SatelliteLayer({ ids }: Props){
               verticalOrigin: VerticalOrigin.CENTER,
               pixelOffset: new Cartesian2(0, -24),
               scaleByDistance: new NearFarScalar(5.0e4, 1.5, 3.0e7, 0.28),
-              disableDepthTestDistance: 1.0e8
+              disableDepthTestDistance: occlude3D ? 0.0 : 1.0e8
             }
             // Path removed - causes getValueInReferenceFrame error with CallbackProperty
             // Can be added later using a different approach (sampled position property)
@@ -148,7 +151,7 @@ export default function SatelliteLayer({ ids }: Props){
       try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
     }
-  }, [ids, showSatellites, satVisualMode, select, showLabels2D])
+  }, [ids, showSatellites, satVisualMode, select, showLabels2D, occlude3D])
   // Track selected satellite
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER

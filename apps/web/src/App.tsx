@@ -8,7 +8,6 @@ import SatelliteLayer from './components/SatelliteLayer'
 import SatList from './components/SatList'
 import useAppStore from './store/useAppStore'
 import { useEffect } from 'react'
-import Help from './components/Help'
 
 export default function App() {
   const { mode, sidebarOpen, toggleSidebar, setSidebarOpen, setMode } = useAppStore()
@@ -54,9 +53,6 @@ export default function App() {
         </div>
         <div className="pointer-events-auto">
           <HUDControls />
-        </div>
-        <div className="pointer-events-auto">
-          <Help />
         </div>
       </div>
       {/* Always render both, use CSS to show/hide */}
