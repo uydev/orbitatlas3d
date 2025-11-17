@@ -12,9 +12,13 @@ export default function App() {
   const { mode, sidebarOpen, toggleSidebar } = useAppStore()
   return (
     <div className="w-full h-screen bg-black text-white">
-      <div className="absolute z-[3000] p-2 w-full flex gap-2">
-        <Filters />
-        <HUDControls />
+      <div className="absolute z-[3000] p-2 w-full flex gap-2 pointer-events-none">
+        <div className="pointer-events-auto">
+          <Filters />
+        </div>
+        <div className="pointer-events-auto">
+          <HUDControls />
+        </div>
       </div>
       {/* Always render both, use CSS to show/hide */}
       <div className={mode === '3D' ? 'w-full h-full' : 'hidden'}>

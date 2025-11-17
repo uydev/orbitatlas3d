@@ -20,6 +20,7 @@ interface State {
   satVisualMode: SatVisualMode
   setSatVisualMode: (m: SatVisualMode) => void
   sidebarOpen: boolean
+  setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   observer?: Observer
   setObserver: (o?: Observer) => void
@@ -49,6 +50,7 @@ const useAppStore = create<State>((set)=>(
     })),
     toggleSatellites: ()=>set((state)=>({showSatellites: !state.showSatellites})),
     setSatVisualMode: (m)=>set({satVisualMode: m}),
+    setSidebarOpen: (open)=>set({ sidebarOpen: open }),
     toggleSidebar: ()=>set((state)=>({sidebarOpen: !state.sidebarOpen})),
     setObserver: (o)=>set({observer: o}),
     toggleOverheadOnly: ()=>set((state)=>({overheadOnly: !state.overheadOnly})),
