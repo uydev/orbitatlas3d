@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -34,7 +34,7 @@ export default function SatelliteLayer({ ids }: Props){
     async function addSatellites() {
       let sats
       try {
-        sats = await fetchActive(600) // SAT LIMIT
+        sats = await fetchActive(satLimit) // SAT LIMIT
       } catch (e) {
         console.error('Failed to fetch satellites:', e)
         return
@@ -151,7 +151,7 @@ export default function SatelliteLayer({ ids }: Props){
       try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
     }
-  }, [ids, showSatellites, satVisualMode, select, showLabels2D, occlude3D])
+  }, [ids, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit])
   // Track selected satellite
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER

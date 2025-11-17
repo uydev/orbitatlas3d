@@ -100,7 +100,7 @@ def _fetch_celestrak_group(group: str) -> list[dict]:
 SPACE_TRACK_USERNAME = os.getenv("SPACE_TRACK_USERNAME")
 SPACE_TRACK_PASSWORD = os.getenv("SPACE_TRACK_PASSWORD")
 SPACE_TRACK_TIMEOUT = float(os.getenv("SPACE_TRACK_TIMEOUT", "25"))
-SPACE_TRACK_LIMIT = int(os.getenv("SPACE_TRACK_LIMIT", "1000"))  # SAT LIMIT
+SPACE_TRACK_LIMIT = int(os.getenv("SPACE_TRACK_LIMIT", "10000"))  # SAT LIMIT
 
 _CACHE_ACTIVE: dict[str, object] = {"expires": 0.0, "data": None}
 
@@ -117,7 +117,9 @@ def list_active(limit: int = 1000):  # SAT LIMIT
     if isinstance(_CACHE_ACTIVE.get("expires"), (float, int)) and now < float(_CACHE_ACTIVE["expires"]):
         data = _CACHE_ACTIVE.get("data")
         if isinstance(data, list):
-            return data[:limit] if limit and limit > 0 else data
+            # If cache exists but is smaller than requested limit, refetch to expand cache
+            if not limit or limit <= 0 or len(data) >= int(limit):
+                return data[:limit] if limit and limit > 0 else data
 
     data: list[dict] | None = None
     last_err: str | None = None
@@ -125,7 +127,8 @@ def list_active(limit: int = 1000):  # SAT LIMIT
     # Prefer Space-Track when credentials are available (includes TLE lines).
     if SPACE_TRACK_USERNAME and SPACE_TRACK_PASSWORD:
         try:
-            data = _fetch_space_track(min(limit if limit and limit > 0 else SPACE_TRACK_LIMIT, SPACE_TRACK_LIMIT))
+            # Always build cache with the maximum configured limit to avoid truncation on subsequent requests
+            data = _fetch_space_track(SPACE_TRACK_LIMIT)
         except Exception as e:  # noqa: BLE001
             last_err = f"Space-Track failed: {e}"
 

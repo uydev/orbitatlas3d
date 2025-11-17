@@ -7,9 +7,9 @@ export default function SatList(){
   const [error, setError] = useState<string|undefined>()
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
-  const { selected, select } = useAppStore()
+  const { selected, select, satLimit } = useAppStore()
 
-  useEffect(()=>{ void load() },[])
+  useEffect(()=>{ void load() },[satLimit])
 
   async function load(){
     setLoading(true)
@@ -19,7 +19,7 @@ export default function SatList(){
       let lastErr: any
       for (let i=0;i<3;i++){
         try {
-          list = await fetchActive(1000) // SAT LIMIT
+          list = await fetchActive(satLimit) // respect global sat limit
           if (Array.isArray(list) && list.length>0) break
         } catch(e){ lastErr = e }
         await new Promise(r=>setTimeout(r, (i+1)*800))

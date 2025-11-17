@@ -17,7 +17,7 @@ export default function Map2D() {
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
   const [mapReady, setMapReady] = useState(false)
-  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar } = useAppStore()
+  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit } = useAppStore()
   function getIcon(selected: boolean){
     const size = selected ? 26 : 20
     const cls = selected ? 'oa-sat-icon oa-sat-icon--selected' : 'oa-sat-icon'
@@ -135,7 +135,7 @@ export default function Map2D() {
 
     async function loadSatellites() {
       try {
-        const sats = await fetchActive(600) // SAT LIMIT
+        const sats = await fetchActive(satLimit) // SAT LIMIT
         if (!sats || sats.length === 0) {
           console.warn('No satellites returned from API')
           setLoading(false)
@@ -322,7 +322,7 @@ export default function Map2D() {
       // Cleanup window function
       delete (window as any).selectSatellite
     }
-  }, [mapReady, showSatellites, select, observer, overheadOnly, showLabels2D, showTracks2D])
+  }, [mapReady, showSatellites, select, observer, overheadOnly, showLabels2D, showTracks2D, satLimit])
 
   // Show observer marker and recenter
   useEffect(() => {

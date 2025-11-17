@@ -32,6 +32,8 @@ interface State {
   toggleTracks2D: () => void
   occlude3D: boolean
   toggleOcclude3D: () => void
+  satLimit: number
+  setSatLimit: (n: number) => void
 }
 const useAppStore = create<State>((set)=>(
   {
@@ -45,6 +47,7 @@ const useAppStore = create<State>((set)=>(
     showLabels2D: false,
     showTracks2D: true,
     occlude3D: false,
+    satLimit: 600,
     setMode: (m)=>set({mode:m}),
     select: (s)=>set((state)=>({
       selected: s,
@@ -59,7 +62,8 @@ const useAppStore = create<State>((set)=>(
     toggleOverheadOnly: ()=>set((state)=>({overheadOnly: !state.overheadOnly})),
     toggleLabels2D: ()=>set((state)=>({showLabels2D: !state.showLabels2D})),
     toggleTracks2D: ()=>set((state)=>({showTracks2D: !state.showTracks2D})),
-    toggleOcclude3D: ()=>set((state)=>({occlude3D: !state.occlude3D}))
+    toggleOcclude3D: ()=>set((state)=>({occlude3D: !state.occlude3D})),
+    setSatLimit: (n)=>set({ satLimit: Math.max(1, Math.floor(n)) })
   }
 ))
 export default useAppStore

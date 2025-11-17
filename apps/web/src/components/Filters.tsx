@@ -2,7 +2,7 @@ import useAppStore from '../store/useAppStore'
 import { useState } from 'react'
 
 export default function Filters(){
-  const { showSatellites, toggleSatellites, satVisualMode, setSatVisualMode, showLabels2D, toggleLabels2D, showTracks2D, toggleTracks2D, occlude3D, toggleOcclude3D } = useAppStore()
+  const { showSatellites, toggleSatellites, satVisualMode, setSatVisualMode, showLabels2D, toggleLabels2D, showTracks2D, toggleTracks2D, occlude3D, toggleOcclude3D, satLimit, setSatLimit } = useAppStore()
   const [showConfig, setShowConfig] = useState(false)
   return (
     <div className="flex items-center gap-3 px-3 py-1 rounded bg-zinc-800 relative">
@@ -36,6 +36,27 @@ export default function Filters(){
             <input type="checkbox" checked={occlude3D} onChange={toggleOcclude3D} />
             Hide satellites behind planet (3D)
           </label>
+          <div className="flex items-center gap-2 text-xs opacity-90 select-none py-0.5">
+            <span>Sat limit</span>
+            <select
+              className="bg-zinc-800 border border-white/10 rounded px-2 py-1"
+              value={String(satLimit)}
+              onChange={(e)=>{
+                const v = e.target.value
+                const n = v === '999999' ? 999999 : parseInt(v, 10)
+                if (!isNaN(n)) setSatLimit(n)
+              }}
+              title="Limit number of satellites rendered"
+            >
+              <option value="200">200</option>
+              <option value="600">600</option>
+              <option value="1000">1000</option>
+              <option value="3000">3000</option>
+              <option value="6000">6000</option>
+              <option value="9000">9000</option>
+              <option value="999999">MAX</option>
+            </select>
+          </div>
         </div>
       )}
       {showSatellites && (
