@@ -4,6 +4,7 @@ import useAppStore, { SatSummary } from '../store/useAppStore'
 
 export default function SatList(){
   const [items, setItems] = useState<SatSummary[]>([])
+  const [byId, setById] = useState<Map<number, {name: string; tle1?: string; tle2?: string}>>(new Map())
   const [error, setError] = useState<string|undefined>()
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
@@ -25,7 +26,13 @@ export default function SatList(){
         await new Promise(r=>setTimeout(r, (i+1)*800))
       }
       if (!Array.isArray(list) || list.length===0) throw lastErr || new Error('No data')
-      setItems(list.map(s=>({ norad_id: s.NORAD_CAT_ID, name: s.OBJECT_NAME })))
+      const map = new Map<number, {name:string; tle1?: string; tle2?: string}>()
+      const mapped = list.map((s:any)=> {
+        map.set(s.NORAD_CAT_ID, { name: s.OBJECT_NAME, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
+        return { norad_id: s.NORAD_CAT_ID, name: s.OBJECT_NAME }
+      })
+      setById(map)
+      setItems(mapped)
     } catch (e:any) {
       setError(e?.message || 'Failed to load satellites')
       setItems([])
@@ -60,7 +67,10 @@ export default function SatList(){
           </div>
         )}
         {filtered.map(s=> (
-          <button key={s.norad_id} className={`w-full text-left px-2 py-1 hover:bg-zinc-800 ${selected?.norad_id===s.norad_id?'bg-zinc-800':''}`} onClick={()=>select(s)}>
+          <button key={s.norad_id} className={`w-full text-left px-2 py-1 hover:bg-zinc-800 ${selected?.norad_id===s.norad_id?'bg-zinc-800':''}`} onClick={()=>{
+            const extra = byId.get(s.norad_id)
+            select({ norad_id: s.norad_id, name: s.name, tle1: extra?.tle1, tle2: extra?.tle2 })
+          }}>
             <div className="font-medium">{s.name}</div>
             <div className="opacity-70">NORAD {s.norad_id}</div>
           </button>

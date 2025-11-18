@@ -17,7 +17,7 @@ export default function Map2D() {
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
   const [mapReady, setMapReady] = useState(false)
-  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit } = useAppStore()
+  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit, showOnlySelected } = useAppStore()
   function getIcon(selected: boolean){
     const size = selected ? 26 : 20
     const cls = selected ? 'oa-sat-icon oa-sat-icon--selected' : 'oa-sat-icon'
@@ -135,6 +135,79 @@ export default function Map2D() {
 
     async function loadSatellites() {
       try {
+        // If configured to show only the selected satellite, draw just that one (if present)
+        if (showOnlySelected) {
+          // Clear existing markers and tracks
+          markersRef.current.forEach((marker) => { map.removeLayer(marker as any) })
+          markersRef.current.clear()
+          tracksRef.current.forEach((line)=>map.removeLayer(line))
+          tracksRef.current.clear()
+
+          if (!selected || !selected.tle1 || !selected.tle2) {
+            setVisibleCount(0)
+            setLoading(false)
+            return
+          }
+          const now = new Date()
+          const gmst = sat.gstime(now)
+          const rec = sat.twoline2satrec(selected.tle1, selected.tle2)
+          const pv = sat.propagate(rec, now)
+          if (!pv.position) {
+            setVisibleCount(0)
+            setLoading(false)
+            return
+          }
+          const gd = sat.eciToGeodetic(pv.position as any, gmst)
+          const lat = sat.degreesLat(gd.latitude)
+          let lon = sat.degreesLong(gd.longitude)
+          if (lon < -180 || lon > 180) {
+            lon = ((lon % 360) + 360) % 360
+            if (lon > 180) lon -= 360
+          }
+          const marker: L.Layer = satVisualMode === 'dot'
+            ? L.circleMarker([lat, lon], { radius: 6, fillColor: '#ffd800', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 0.8 })
+            : L.marker([lat, lon], { icon: getIcon(true), zIndexOffset: 100 })
+          if (showLabels2D) {
+            marker.bindTooltip(selected.name, { permanent: true, direction: 'top', offset: L.point(0, -8), className: 'leaflet-sat-label' })
+          }
+          ;(marker as any).on?.('click', () => {
+            if (!sidebarOpen) toggleSidebar()
+            select({ norad_id: selected.norad_id, name: selected.name, tle1: selected.tle1, tle2: selected.tle2 })
+          })
+          ;(marker as any).addTo(map)
+          markersRef.current.set(selected.norad_id, marker)
+          try {
+            map.setView((marker as any).getLatLng?.() || [lat, lon], Math.max(map.getZoom(), 4))
+          } catch {}
+          if (showTracks2D) {
+            try {
+              const points: [number, number][] = []
+              for (let minutes = 0; minutes <= 30; minutes += 2) {
+                const t = new Date(now.getTime() + minutes * 60 * 1000)
+                const gmstStep = sat.gstime(t)
+                const pv2 = sat.propagate(rec, t)
+                if (pv2.position) {
+                  const gd2 = sat.eciToGeodetic(pv2.position as any, gmstStep)
+                  const lat2 = sat.degreesLat(gd2.latitude)
+                  let lon2 = sat.degreesLong(gd2.longitude)
+                  if (lon2 < -180 || lon2 > 180) {
+                    lon2 = ((lon2 % 360) + 360) % 360
+                    if (lon2 > 180) lon2 -= 360
+                  }
+                  points.push([lat2, lon2])
+                }
+              }
+              if (points.length >= 2) {
+                const line = L.polyline(points, { color: '#00ffff', opacity: 0.5, weight: 1 })
+                line.addTo(map)
+                tracksRef.current.set(selected.norad_id, line)
+              }
+            } catch {}
+          }
+          setVisibleCount(1)
+          setLoading(false)
+          return
+        }
         const sats = await fetchActive(satLimit) // SAT LIMIT
         if (!sats || sats.length === 0) {
           console.warn('No satellites returned from API')
@@ -322,7 +395,7 @@ export default function Map2D() {
       // Cleanup window function
       delete (window as any).selectSatellite
     }
-  }, [mapReady, showSatellites, select, observer, overheadOnly, showLabels2D, showTracks2D, satLimit])
+  }, [mapReady, showSatellites, observer, overheadOnly, showLabels2D, showTracks2D, satLimit, showOnlySelected, selected, satVisualMode, sidebarOpen, toggleSidebar])
 
   // Show observer marker and recenter
   useEffect(() => {

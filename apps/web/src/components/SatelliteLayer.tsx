@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit, showOnlySelected } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -14,24 +14,120 @@ export default function SatelliteLayer({ ids }: Props){
       viewer.scene.globe.depthTestAgainstTerrain = !!occlude3D
     } catch {}
     const clearSatellites = () => {
-      const toRemove: string[] = []
-      viewer.entities.values.forEach((entity: any) => {
-        if (typeof entity.id === 'string' && entity.id.startsWith(SAT_PREFIX)) {
-          toRemove.push(entity.id)
-        }
-      })
-      toRemove.forEach((id)=>{
-        const e = viewer.entities.getById(id)
-        if (e) viewer.entities.remove(e)
-      })
+      try {
+        // Fast path: our scene uses entities only for satellites
+        viewer.entities.removeAll()
+      } catch {
+        // Fallback: remove by prefix
+        const toRemove: string[] = []
+        viewer.entities.values.forEach((entity: any) => {
+          if (typeof entity.id === 'string' && entity.id.startsWith(SAT_PREFIX)) {
+            toRemove.push(entity.id)
+          }
+        })
+        toRemove.forEach((id)=>{
+          const e = viewer.entities.getById(id)
+          if (e) viewer.entities.remove(e)
+        })
+      }
     }
     if (!showSatellites) {
       clearSatellites()
       return
     }
+    try { viewer.selectedEntity = undefined; viewer.trackedEntity = undefined } catch {}
     clearSatellites()
     const createdIds: string[] = []
     async function addSatellites() {
+      // If only selected is requested, draw just that entity when TLEs exist
+      if (showOnlySelected) {
+        if (selected?.tle1 && selected?.tle2) {
+          try {
+            const rec = sat.twoline2satrec(selected.tle1, selected.tle2)
+            const position = new CallbackProperty((time: any) => {
+              try {
+                const now = JulianDate.toDate(time || viewer.clock.currentTime)
+                const pv = sat.propagate(rec, now)
+                if (!pv.position || pv.error) return Cartesian3.fromDegrees(0,0,0)
+                const gmst = sat.gstime(now)
+                const geodetic = sat.eciToGeodetic(pv.position, gmst)
+                const lat = geodetic.latitude * 180/Math.PI
+                const lon = geodetic.longitude * 180/Math.PI
+                const alt = geodetic.height * 1000
+                return Cartesian3.fromDegrees(lon, lat, alt)
+              } catch { return Cartesian3.fromDegrees(0,0,0) }
+            }, false)
+            const id = `${SAT_PREFIX}${selected.norad_id}`
+            const ent = viewer.entities.add({
+              id,
+              name: selected.name,
+              position,
+              point: {
+                show: satVisualMode === 'dot',
+                pixelSize: 4,
+                color: Color.CYAN,
+                outlineColor: Color.BLACK,
+                outlineWidth: 1,
+                scaleByDistance: new NearFarScalar(5.0e4, 1.0, 3.0e7, 0.5),
+                disableDepthTestDistance: occlude3D ? 0.0 : 1.0e8
+              },
+              label: {
+                show: !!showLabels2D,
+                text: selected.name,
+                font: '14px "JetBrains Mono", "Fira Mono", monospace',
+                fillColor: Color.WHITE,
+                outlineColor: Color.BLACK,
+                outlineWidth: 3,
+                style: LabelStyle.FILL_AND_OUTLINE,
+                pixelOffset: new Cartesian2(0, -58),
+                scaleByDistance: new NearFarScalar(5.0e4, 1.4, 3.0e7, 0.22),
+                disableDepthTestDistance: occlude3D ? 0.0 : 1.0e8
+              },
+              billboard: {
+                show: satVisualMode === 'billboard',
+                image: '/icons/satellite.svg',
+                width: 56,
+                height: 56,
+                color: Color.CYAN,
+                verticalOrigin: VerticalOrigin.CENTER,
+                pixelOffset: new Cartesian2(0, -24),
+                scaleByDistance: new NearFarScalar(5.0e4, 1.5, 3.0e7, 0.28),
+                disableDepthTestDistance: occlude3D ? 0.0 : 1.0e8
+              }
+            })
+            // Focus camera on the newly added selected entity
+            try {
+              viewer.selectedEntity = ent
+              const doFly = () => {
+                const cameraHeight = viewer.camera?.positionCartographic?.height ?? 2.0e6
+                viewer.flyTo(ent, {
+                  duration: 1.2,
+                  offset: new HeadingPitchRange(0, -0.35, Math.max(cameraHeight, 1.5e6))
+                })
+              }
+              // Ensure entity is in scene graph
+              requestAnimationFrame(()=>{ try { doFly() } catch {} })
+            } catch {}
+            return
+          } catch {
+            // fall through to bulk load if single build fails
+          }
+        } else if (selected?.norad_id) {
+          // Try to fetch and locate TLEs for just the selected from the API
+          try {
+            const list = await fetchActive(Math.max(1000, satLimit))
+            const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
+            if (s?.TLE_LINE1 && s?.TLE_LINE2) {
+              select({ norad_id: s.NORAD_CAT_ID, name: s.OBJECT_NAME, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
+              // re-enter effect on next run
+            }
+          } catch {}
+          return
+        } else {
+          // No selection: show nothing
+          return
+        }
+      }
       let sats
       try {
         sats = await fetchActive(satLimit) // SAT LIMIT
@@ -44,6 +140,7 @@ export default function SatelliteLayer({ ids }: Props){
         return
       }
       console.log(`Adding ${sats.length} satellites to viewer`)
+      let focused = false
       for (const s of sats) {
         try {
           if (!s.TLE_LINE1 || !s.TLE_LINE2) {
@@ -86,7 +183,7 @@ export default function SatelliteLayer({ ids }: Props){
           const showDot = satVisualMode === 'dot'
           const showLabel = !!showLabels2D
           
-          viewer.entities.add({
+          const ent = viewer.entities.add({
             id,
             name: s.OBJECT_NAME,
             position,
@@ -125,6 +222,21 @@ export default function SatelliteLayer({ ids }: Props){
             // Path removed - causes getValueInReferenceFrame error with CallbackProperty
             // Can be added later using a different approach (sampled position property)
           })
+          // If this entity is the currently selected, focus immediately
+          if (!focused && selected && selected.norad_id === s.NORAD_CAT_ID) {
+            focused = true
+            try {
+              viewer.selectedEntity = ent
+              const doFly = () => {
+                const cameraHeight = viewer.camera?.positionCartographic?.height ?? 2.0e6
+                viewer.flyTo(ent, {
+                  duration: 1.2,
+                  offset: new HeadingPitchRange(0, -0.35, Math.max(cameraHeight, 1.5e6))
+                })
+              }
+              requestAnimationFrame(()=>{ try { doFly() } catch {} })
+            } catch {}
+          }
         } catch {
           // ignore individual failures
         }
@@ -151,25 +263,75 @@ export default function SatelliteLayer({ ids }: Props){
       try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
     }
-  }, [ids, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit])
-  // Track selected satellite
+  }, [ids, showSatellites, satVisualMode, showLabels2D, occlude3D, satLimit, showOnlySelected, select])
+  // Track selected satellite and handle single-sat mode without rebuilding bulk layer
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
-    if (selected) {
-      const entityId = `${SAT_PREFIX}${selected.norad_id}`
-      const e = viewer.entities.getById(entityId)
-      if (e) {
-        viewer.trackedEntity = undefined
-        viewer.selectedEntity = e
-        const cameraHeight = viewer.camera?.positionCartographic?.height ?? 2.0e6
-        viewer.flyTo(e, {
-          duration: 1.6,
-          offset: new HeadingPitchRange(0, -0.35, Math.max(cameraHeight, 1.5e6))
-        })
+    if (!selected) return
+    if (showOnlySelected) {
+      // Render just the selected satellite using its TLE (or fetch it), then fly
+      const renderSingle = (tle1: string, tle2: string) => {
+        try { viewer.entities.removeAll() } catch {}
+        try {
+          const rec = sat.twoline2satrec(tle1, tle2)
+          const position = new CallbackProperty((time: any) => {
+            try {
+              const now = JulianDate.toDate(time || viewer.clock.currentTime)
+              const pv = sat.propagate(rec, now)
+              if (!pv.position || pv.error) return Cartesian3.fromDegrees(0,0,0)
+              const gmst = sat.gstime(now)
+              const geodetic = sat.eciToGeodetic(pv.position, gmst)
+              const lat = geodetic.latitude * 180/Math.PI
+              const lon = geodetic.longitude * 180/Math.PI
+              const alt = geodetic.height * 1000
+              return Cartesian3.fromDegrees(lon, lat, alt)
+            } catch { return Cartesian3.fromDegrees(0,0,0) }
+          }, false)
+          const ent = viewer.entities.add({
+            id: `${SAT_PREFIX}${selected.norad_id}`,
+            name: selected.name,
+            position,
+            point: { show: satVisualMode==='dot', pixelSize:4, color: Color.CYAN, outlineColor: Color.BLACK, outlineWidth:1, disableDepthTestDistance: occlude3D?0:1.0e8 },
+            label: { show: !!showLabels2D, text: selected.name, font:'14px "JetBrains Mono", "Fira Mono", monospace', fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth:3, style: LabelStyle.FILL_AND_OUTLINE, pixelOffset: new Cartesian2(0,-58), disableDepthTestDistance: occlude3D?0:1.0e8 },
+            billboard: { show: satVisualMode==='billboard', image:'/icons/satellite.svg', width:56, height:56, color: Color.CYAN, verticalOrigin: VerticalOrigin.CENTER, pixelOffset: new Cartesian2(0,-24), disableDepthTestDistance: occlude3D?0:1.0e8 }
+          })
+          requestAnimationFrame(()=>{ try {
+            viewer.selectedEntity = ent
+            const cameraHeight = viewer.camera?.positionCartographic?.height ?? 2.0e6
+            viewer.flyTo(ent, { duration: 1.2, offset: new HeadingPitchRange(0, -0.35, Math.max(cameraHeight, 1.5e6)) })
+          } catch {} })
+        } catch {}
       }
+      if (selected.tle1 && selected.tle2) {
+        renderSingle(selected.tle1, selected.tle2)
+      } else {
+        // Try to resolve TLEs for the selected
+        ;(async ()=>{
+          try {
+            const list = await fetchActive(Math.max(1000, satLimit))
+            const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
+            if (s?.TLE_LINE1 && s?.TLE_LINE2) {
+              renderSingle(s.TLE_LINE1, s.TLE_LINE2)
+            }
+          } catch {}
+        })()
+      }
+      return
     }
-  }, [selected])
+    // Normal mode: just focus existing entity
+    const entityId = `${SAT_PREFIX}${selected.norad_id}`
+    const e = viewer.entities.getById(entityId)
+    if (e) {
+      viewer.trackedEntity = undefined
+      viewer.selectedEntity = e
+      const cameraHeight = viewer.camera?.positionCartographic?.height ?? 2.0e6
+      viewer.flyTo(e, {
+        duration: 1.6,
+        offset: new HeadingPitchRange(0, -0.35, Math.max(cameraHeight, 1.5e6))
+      })
+    }
+  }, [selected, showOnlySelected, satVisualMode, showLabels2D, occlude3D, satLimit])
   return null
 }
 
