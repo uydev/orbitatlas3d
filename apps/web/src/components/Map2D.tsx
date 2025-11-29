@@ -14,6 +14,7 @@ export default function Map2D() {
   const markersRef = useRef<Map<number, L.Layer>>(new Map())
   const observerMarkerRef = useRef<L.Layer | null>(null)
   const tracksRef = useRef<Map<number, L.Polyline>>(new Map())
+  const selectedRingRef = useRef<L.Layer | null>(null)
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
   const [mapReady, setMapReady] = useState(false)
@@ -142,15 +143,30 @@ export default function Map2D() {
           markersRef.current.clear()
           tracksRef.current.forEach((line)=>map.removeLayer(line))
           tracksRef.current.clear()
-
-          if (!selected || !selected.tle1 || !selected.tle2) {
-            setVisibleCount(0)
-            setLoading(false)
-            return
+          if (selectedRingRef.current) {
+            try { map.removeLayer(selectedRingRef.current) } catch {}
+            selectedRingRef.current = null
           }
+
+          if (!selected) { setVisibleCount(0); setLoading(false); return }
+          // Ensure TLEs available; if missing, resolve from API by NORAD and update store selection
+          let tle1 = selected.tle1
+          let tle2 = selected.tle2
+          if (!tle1 || !tle2) {
+            try {
+              const list = await fetchActive(Math.max(2000, satLimit))
+              const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
+              if (s?.TLE_LINE1 && s?.TLE_LINE2) {
+                select({ norad_id: selected.norad_id, name: selected.name, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
+                setLoading(false)
+                return
+              }
+            } catch {}
+          }
+          if (!tle1 || !tle2) { setVisibleCount(0); setLoading(false); return }
           const now = new Date()
           const gmst = sat.gstime(now)
-          const rec = sat.twoline2satrec(selected.tle1, selected.tle2)
+          const rec = sat.twoline2satrec(tle1, tle2)
           const pv = sat.propagate(rec, now)
           if (!pv.position) {
             setVisibleCount(0)
@@ -164,20 +180,45 @@ export default function Map2D() {
             lon = ((lon % 360) + 360) % 360
             if (lon > 180) lon -= 360
           }
-          const marker: L.Layer = satVisualMode === 'dot'
-            ? L.circleMarker([lat, lon], { radius: 6, fillColor: '#ffd800', color: '#ffffff', weight: 2, opacity: 1, fillOpacity: 0.8 })
-            : L.marker([lat, lon], { icon: getIcon(true), zIndexOffset: 100 })
-          if (showLabels2D) {
-            marker.bindTooltip(selected.name, { permanent: true, direction: 'top', offset: L.point(0, -8), className: 'leaflet-sat-label' })
+          // Build a highly visible focus marker (ring + core) and always show label in single-sat mode
+          let core: L.Layer
+          let ring: L.Layer | undefined
+          if (satVisualMode === 'dot') {
+            core = L.circleMarker([lat, lon], {
+              radius: 8,
+              fillColor: '#ffd800',
+              color: '#ffffff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 0.95
+            })
+            ring = L.circleMarker([lat, lon], {
+              radius: 14,
+              color: '#ffd800',
+              weight: 2,
+              opacity: 0.9,
+              fillOpacity: 0
+            })
+          } else {
+            core = L.marker([lat, lon], { icon: getIcon(true), zIndexOffset: 2000 })
           }
-          ;(marker as any).on?.('click', () => {
+          ;(core as any).bindTooltip?.(selected.name, { permanent: true, direction: 'top', offset: L.point(0, -10), className: 'leaflet-sat-label force-visible' })
+          ;(core as any).on?.('click', () => {
             if (!sidebarOpen) toggleSidebar()
-            select({ norad_id: selected.norad_id, name: selected.name, tle1: selected.tle1, tle2: selected.tle2 })
+            select({ norad_id: selected.norad_id, name: selected.name, tle1, tle2 })
           })
-          ;(marker as any).addTo(map)
-          markersRef.current.set(selected.norad_id, marker)
+          const group = ring ? L.layerGroup([ring as any, core as any]) : L.layerGroup([core as any])
+          group.addTo(map)
           try {
-            map.setView((marker as any).getLatLng?.() || [lat, lon], Math.max(map.getZoom(), 4))
+            (ring as any)?.bringToFront?.()
+            (core as any)?.bringToFront?.()
+          } catch {}
+          markersRef.current.set(selected.norad_id, group)
+          if (ring) {
+            selectedRingRef.current = ring
+          }
+          try {
+            map.setView((core as any).getLatLng?.() || [lat, lon], Math.max(map.getZoom(), 4))
           } catch {}
           if (showTracks2D) {
             try {
@@ -427,6 +468,13 @@ export default function Map2D() {
   useEffect(() => {
     if (!mapRef.current || !selected) return
 
+    const map = mapRef.current
+    // Clear previous ring
+    if (selectedRingRef.current) {
+      try { map.removeLayer(selectedRingRef.current) } catch {}
+      selectedRingRef.current = null
+    }
+
     markersRef.current.forEach((marker, noradId) => {
       if ((marker as any).setStyle) {
         if (noradId === selected.norad_id) {
@@ -438,8 +486,14 @@ export default function Map2D() {
             opacity: 1,
             fillOpacity: 0.8,
           })
+          try { (marker as any).bringToFront?.() } catch {}
           ;(marker as any).openPopup?.()
-          mapRef.current?.setView((marker as L.CircleMarker).getLatLng(), Math.max(mapRef.current.getZoom(), 4))
+          const ll = (marker as L.CircleMarker).getLatLng()
+          map.setView(ll, Math.max(map.getZoom(), 4))
+          // Add a visible ring overlay around selected to make it obvious
+          const ring = L.circleMarker(ll, { radius: 9, color: '#ffd800', weight: 2, opacity: 0.9, fillOpacity: 0 })
+          selectedRingRef.current = ring
+          try { ring.addTo(map); (ring as any).bringToFront?.() } catch {}
         } else {
           ;(marker as L.CircleMarker).setStyle({
             radius: 4,
@@ -453,14 +507,19 @@ export default function Map2D() {
       } else if ((marker as any).setIcon) {
         if (noradId === selected.norad_id) {
           ;(marker as L.Marker).setIcon(getIcon(true))
+          try { (marker as any).bringToFront?.() } catch {}
           ;(marker as any).openPopup?.()
-          mapRef.current?.setView((marker as L.Marker).getLatLng(), Math.max(mapRef.current.getZoom(), 4))
+          const ll = (marker as L.Marker).getLatLng()
+          map.setView(ll, Math.max(map.getZoom(), 4))
+          const ring = L.circleMarker(ll, { radius: 12, color: '#ffd800', weight: 2, opacity: 0.9, fillOpacity: 0 })
+          selectedRingRef.current = ring
+          try { ring.addTo(map); (ring as any).bringToFront?.() } catch {}
         } else {
           ;(marker as L.Marker).setIcon(getIcon(false))
         }
       }
     })
-  }, [selected])
+  }, [selected, showOnlySelected])
 
   return (
     <div className="w-full h-full relative">
