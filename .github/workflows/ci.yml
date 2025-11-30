@@ -9,7 +9,7 @@ jobs:
         with: { node-version: '20' }
       - name: Web deps + build
         run: |
-          cd apps/web && npm ci
+          cd apps/web && npm install
           npm run build
       - name: API tests
         uses: actions/setup-python@v5
