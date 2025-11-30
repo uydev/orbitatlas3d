@@ -14,19 +14,20 @@ export default function Map2D() {
   const markersRef = useRef<Map<number, L.Layer>>(new Map())
   const observerMarkerRef = useRef<L.Layer | null>(null)
   const tracksRef = useRef<Map<number, L.Polyline>>(new Map())
-  const selectedRingRef = useRef<L.Layer | null>(null)
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
   const [mapReady, setMapReady] = useState(false)
   const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit, showOnlySelected } = useAppStore()
-  function getIcon(selected: boolean){
-    const size = selected ? 26 : 20
+
+  function getIcon(selected: boolean) {
+    // Make the selected icon much larger in Icons mode; no extra circle overlay
+    const size = selected ? 80 : 20 // ~400% larger when selected
     const cls = selected ? 'oa-sat-icon oa-sat-icon--selected' : 'oa-sat-icon'
     return L.divIcon({
       className: '',
       html: `<div class="${cls}" style="width:${size}px;height:${size}px"></div>`,
       iconSize: [size, size],
-      iconAnchor: [size/2, size/2]
+      iconAnchor: [size / 2, size / 2]
     })
   }
 
@@ -143,10 +144,6 @@ export default function Map2D() {
           markersRef.current.clear()
           tracksRef.current.forEach((line)=>map.removeLayer(line))
           tracksRef.current.clear()
-          if (selectedRingRef.current) {
-            try { map.removeLayer(selectedRingRef.current) } catch {}
-            selectedRingRef.current = null
-          }
 
           if (!selected) { setVisibleCount(0); setLoading(false); return }
           // Ensure TLEs available; if missing, resolve from API by NORAD and update store selection
@@ -154,16 +151,25 @@ export default function Map2D() {
           let tle2 = selected.tle2
           if (!tle1 || !tle2) {
             try {
-              const list = await fetchActive(Math.max(2000, satLimit))
+              // Fetch a larger set to ensure we find the satellite
+              const list = await fetchActive(Math.max(9999, satLimit))
               const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
               if (s?.TLE_LINE1 && s?.TLE_LINE2) {
+                // Update selection with TLEs and let effect re-run
                 select({ norad_id: selected.norad_id, name: selected.name, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
                 setLoading(false)
-                return
+                return // Effect will re-run with TLEs now available
               }
-            } catch {}
+            } catch (e) {
+              console.warn('Failed to fetch TLEs for selected satellite:', e)
+            }
           }
-          if (!tle1 || !tle2) { setVisibleCount(0); setLoading(false); return }
+          if (!tle1 || !tle2) { 
+            console.warn(`No TLE data available for satellite ${selected.norad_id} (${selected.name})`)
+            setVisibleCount(0); 
+            setLoading(false); 
+            return 
+          }
           const now = new Date()
           const gmst = sat.gstime(now)
           const rec = sat.twoline2satrec(tle1, tle2)
@@ -180,45 +186,35 @@ export default function Map2D() {
             lon = ((lon % 360) + 360) % 360
             if (lon > 180) lon -= 360
           }
-          // Build a highly visible focus marker (ring + core) and always show label in single-sat mode
+          // Build a highly visible focus marker and always show label in single-sat mode
           let core: L.Layer
-          let ring: L.Layer | undefined
           if (satVisualMode === 'dot') {
             core = L.circleMarker([lat, lon], {
-              radius: 8,
+              radius: 11,
               fillColor: '#ffd800',
               color: '#ffffff',
-              weight: 2,
+              weight: 3,
               opacity: 1,
-              fillOpacity: 0.95
-            })
-            ring = L.circleMarker([lat, lon], {
-              radius: 14,
-              color: '#ffd800',
-              weight: 2,
-              opacity: 0.9,
-              fillOpacity: 0
+              fillOpacity: 0.95,
+              zIndexOffset: 3000
             })
           } else {
-            core = L.marker([lat, lon], { icon: getIcon(true), zIndexOffset: 2000 })
+            core = L.marker([lat, lon], { icon: getIcon(true), zIndexOffset: 3000 })
           }
           ;(core as any).bindTooltip?.(selected.name, { permanent: true, direction: 'top', offset: L.point(0, -10), className: 'leaflet-sat-label force-visible' })
           ;(core as any).on?.('click', () => {
             if (!sidebarOpen) toggleSidebar()
             select({ norad_id: selected.norad_id, name: selected.name, tle1, tle2 })
           })
-          const group = ring ? L.layerGroup([ring as any, core as any]) : L.layerGroup([core as any])
-          group.addTo(map)
+          // Add core marker to map
+          ;(core as any).addTo(map)
           try {
-            (ring as any)?.bringToFront?.()
-            (core as any)?.bringToFront?.()
+            ;(core as any).bringToFront?.()
           } catch {}
-          markersRef.current.set(selected.norad_id, group)
-          if (ring) {
-            selectedRingRef.current = ring
-          }
+          markersRef.current.set(selected.norad_id, core)
+          // Center map on the satellite using known coordinates
           try {
-            map.setView((core as any).getLatLng?.() || [lat, lon], Math.max(map.getZoom(), 4))
+            map.setView([lat, lon], Math.max(map.getZoom(), 4))
           } catch {}
           if (showTracks2D) {
             try {
@@ -335,18 +331,20 @@ export default function Map2D() {
                 }
               }
 
+              const id = Number(s.NORAD_CAT_ID)
               let marker: L.Layer
               if (satVisualMode === 'dot') {
                 marker = L.circleMarker([lat, lon], {
-                  radius: 4,
+                radius: 4,
                   fillColor: observer ? '#88e0ff' : '#66ccff',
-                  color: '#ffffff',
-                  weight: 1,
-                  opacity: 0.8,
-                  fillOpacity: 0.6,
-                })
+                color: '#ffffff',
+                weight: 1,
+                opacity: 0.8,
+                fillOpacity: 0.6,
+              })
               } else {
-                marker = L.marker([lat, lon], { icon: getIcon(false), zIndexOffset: 100 })
+                const isSelected = !!selected && id === selected.norad_id
+                marker = L.marker([lat, lon], { icon: getIcon(isSelected), zIndexOffset: isSelected ? 4000 : 100 })
               }
               if (showLabels2D) {
                 marker.bindTooltip(s.OBJECT_NAME || String(s.NORAD_CAT_ID), {
@@ -372,7 +370,7 @@ export default function Map2D() {
               })
 
               ;(marker as any).addTo(map)
-              markersRef.current.set(s.NORAD_CAT_ID, marker)
+              markersRef.current.set(id, marker)
 
               // Optional ground track (simple forward-only, short)
               if (showTracks2D) {
@@ -464,62 +462,56 @@ export default function Map2D() {
     } catch {}
   }, [observer])
 
-  // Highlight selected satellite
+  // Highlight selected satellite (both Icons and Dots modes)
   useEffect(() => {
     if (!mapRef.current || !selected) return
-
     const map = mapRef.current
-    // Clear previous ring
-    if (selectedRingRef.current) {
-      try { map.removeLayer(selectedRingRef.current) } catch {}
-      selectedRingRef.current = null
-    }
-
     markersRef.current.forEach((marker, noradId) => {
+      // Dot mode (circle markers) – emphasize size/brightness, no extra ring
       if ((marker as any).setStyle) {
         if (noradId === selected.norad_id) {
           ;(marker as L.CircleMarker).setStyle({
-            radius: 6,
+            radius: 13,
             fillColor: '#ffd800',
             color: '#ffffff',
-            weight: 2,
+            weight: 4,
             opacity: 1,
-            fillOpacity: 0.8,
+            fillOpacity: 0.95,
           })
           try { (marker as any).bringToFront?.() } catch {}
-          ;(marker as any).openPopup?.()
           const ll = (marker as L.CircleMarker).getLatLng()
           map.setView(ll, Math.max(map.getZoom(), 4))
-          // Add a visible ring overlay around selected to make it obvious
-          const ring = L.circleMarker(ll, { radius: 9, color: '#ffd800', weight: 2, opacity: 0.9, fillOpacity: 0 })
-          selectedRingRef.current = ring
-          try { ring.addTo(map); (ring as any).bringToFront?.() } catch {}
         } else {
+          // Fade non‑selected dots
           ;(marker as L.CircleMarker).setStyle({
             radius: 4,
             fillColor: '#66ccff',
             color: '#ffffff',
             weight: 1,
-            opacity: 0.8,
-            fillOpacity: 0.6,
+            opacity: 0.35,
+            fillOpacity: 0.25,
           })
         }
-      } else if ((marker as any).setIcon) {
+        return
+      }
+      // Icons mode (billboard markers) – no extra ring, just a much larger glowing icon
+      if ((marker as any).setIcon) {
+        const m = marker as L.Marker
         if (noradId === selected.norad_id) {
-          ;(marker as L.Marker).setIcon(getIcon(true))
-          try { (marker as any).bringToFront?.() } catch {}
-          ;(marker as any).openPopup?.()
-          const ll = (marker as L.Marker).getLatLng()
+          m.setIcon(getIcon(true))
+          m.setOpacity(1)
+          ;(m as any).setZIndexOffset?.(4000)
+          try { (m as any).bringToFront?.() } catch {}
+          const ll = m.getLatLng()
           map.setView(ll, Math.max(map.getZoom(), 4))
-          const ring = L.circleMarker(ll, { radius: 12, color: '#ffd800', weight: 2, opacity: 0.9, fillOpacity: 0 })
-          selectedRingRef.current = ring
-          try { ring.addTo(map); (ring as any).bringToFront?.() } catch {}
         } else {
-          ;(marker as L.Marker).setIcon(getIcon(false))
+          m.setIcon(getIcon(false))
+          m.setOpacity(0.3) // fade non‑selected icons
+          ;(m as any).setZIndexOffset?.(0)
         }
       }
     })
-  }, [selected, showOnlySelected])
+  }, [selected])
 
   return (
     <div className="w-full h-full relative">

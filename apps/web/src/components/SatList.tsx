@@ -28,8 +28,9 @@ export default function SatList(){
       if (!Array.isArray(list) || list.length===0) throw lastErr || new Error('No data')
       const map = new Map<number, {name:string; tle1?: string; tle2?: string}>()
       const mapped = list.map((s:any)=> {
-        map.set(s.NORAD_CAT_ID, { name: s.OBJECT_NAME, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
-        return { norad_id: s.NORAD_CAT_ID, name: s.OBJECT_NAME }
+        const id = Number(s.NORAD_CAT_ID)
+        map.set(id, { name: s.OBJECT_NAME, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
+        return { norad_id: id, name: s.OBJECT_NAME }
       })
       setById(map)
       setItems(mapped)
