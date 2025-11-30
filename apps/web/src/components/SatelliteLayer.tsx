@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, setSimulationTime } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, setSimulationTime, orbitPlay, orbitHorizonHours, trackRefreshToken } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -176,17 +176,35 @@ export default function SatelliteLayer({ ids }: Props){
             continue
           }
           
-          // Create position callback that always returns a valid position
+          // Create position callback that supports optional orbit playback
+          let lastSampleTime: Date | undefined
+          let lastResetCounter = useAppStore.getState().orbitResetCounter
           const position = new CallbackProperty((time: any) => {
             try {
-              const now = JulianDate.toDate(time || viewer.clock.currentTime)
-              const pv = sat.propagate(rec, now)
+              const nowCb = JulianDate.toDate(time || viewer.clock.currentTime)
+              const state = useAppStore.getState()
+              if (state.orbitResetCounter !== lastResetCounter) {
+                lastResetCounter = state.orbitResetCounter
+                lastSampleTime = undefined
+              }
+              let sampleTime = nowCb
+              const isSelected = !!state.selected && state.selected.norad_id === s.NORAD_CAT_ID
+              if (isSelected && state.orbitPlay && state.showTracks2D) {
+                const horizonMinutes = Math.max(30, Math.min(state.orbitHorizonHours * 60, 7 * 24 * 60))
+                const periodSec = 10
+                const tNorm = ((Date.now() / 1000) / periodSec) % 1
+                const minutesAhead = tNorm * horizonMinutes
+                sampleTime = new Date(nowCb.getTime() + minutesAhead * 60 * 1000)
+                lastSampleTime = sampleTime
+              } else if (isSelected && lastSampleTime && state.showTracks2D) {
+                sampleTime = lastSampleTime
+              }
+              const pv = sat.propagate(rec, sampleTime)
               if (!pv.position || pv.error) {
-                // Return a default position if propagation fails
                 return Cartesian3.fromDegrees(0, 0, 0)
               }
-              const gmst = sat.gstime(now)
-              const geodetic = sat.eciToGeodetic(pv.position, gmst)
+              const gmstCb = sat.gstime(sampleTime)
+              const geodetic = sat.eciToGeodetic(pv.position as any, gmstCb)
               const lat = geodetic.latitude * 180/Math.PI
               const lon = geodetic.longitude * 180/Math.PI
               const alt = geodetic.height * 1000
@@ -288,7 +306,7 @@ export default function SatelliteLayer({ ids }: Props){
       clearTrack()
       clearInterval(simInterval)
     }
-  }, [ids, showSatellites, satVisualMode, showLabels2D, occlude3D, satLimit, showOnlySelected, select])
+  }, [ids, showSatellites, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, orbitHorizonHours, trackRefreshToken, select])
   // Track selected satellite and handle single-sat mode without rebuilding bulk layer
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER
@@ -312,24 +330,34 @@ export default function SatelliteLayer({ ids }: Props){
     }
     if (showOnlySelected) {
       // Render just the selected satellite using its TLE (or fetch it), then fly
-      const renderSingle = (tle1: string, tle2: string) => {
+          const renderSingle = (tle1: string, tle2: string) => {
         try { viewer.entities.removeAll() } catch {}
         try {
           const rec = sat.twoline2satrec(tle1, tle2)
+          let lastSampleTime: Date | undefined
+          let lastResetCounter = useAppStore.getState().orbitResetCounter
           const position = new CallbackProperty((time: any) => {
             try {
               const now = JulianDate.toDate(time || viewer.clock.currentTime)
-              // When tracks are enabled, exaggerate motion along the orbit to show direction:
-              // - First 3s of a 5s cycle: sit at the real-time position
-              // - Next 2s: run quickly along ~60 minutes of future orbit
+              const state = useAppStore.getState()
+              // Clear any cached playback position when reset is pressed
+              if (state.orbitResetCounter !== lastResetCounter) {
+                lastResetCounter = state.orbitResetCounter
+                lastSampleTime = undefined
+              }
+              // Real-time position by default
               let sampleTime = now
-              if (showTracks2D) {
-                const cycle = (Date.now() / 1000) % 5 // 0..5
-                if (cycle >= 3) {
-                  const phase = (cycle - 3) / 2 // 0..1 over the fast segment
-                  const minutesAhead = phase * 60
-                  sampleTime = new Date(now.getTime() + minutesAhead * 60 * 1000)
-                }
+              if (state.orbitPlay && state.showTracks2D) {
+                const horizonMinutes = Math.max(30, Math.min(state.orbitHorizonHours * 60, 7 * 24 * 60))
+                const periodSec = 10 // one full playback loop every 10 seconds
+                const tNorm = ((Date.now() / 1000) / periodSec) % 1 // 0..1
+                const minutesAhead = tNorm * horizonMinutes
+                sampleTime = new Date(now.getTime() + minutesAhead * 60 * 1000)
+                lastSampleTime = sampleTime
+              } else if (lastSampleTime && state.showTracks2D) {
+                // When paused (orbitPlay false but tracks still visible), hold the
+                // last animated position instead of snapping back to real time.
+                sampleTime = lastSampleTime
               }
               const pv = sat.propagate(rec, sampleTime)
               if (!pv.position || pv.error) return Cartesian3.fromDegrees(0,0,0)
@@ -349,12 +377,14 @@ export default function SatelliteLayer({ ids }: Props){
             label: { show: !!showLabels2D, text: selected.name, font:'14px "JetBrains Mono", "Fira Mono", monospace', fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth:3, style: LabelStyle.FILL_AND_OUTLINE, pixelOffset: new Cartesian2(0,-58), disableDepthTestDistance: occlude3D?0:1.0e8 },
             billboard: { show: satVisualMode==='billboard', image:'/icons/satellite.svg', width:56, height:56, color: Color.CYAN, verticalOrigin: VerticalOrigin.CENTER, pixelOffset: new Cartesian2(0,-24), disableDepthTestDistance: occlude3D?0:1.0e8 }
           })
-          // Build a static trajectory polyline around "now" if tracks are enabled
+          // Build a static trajectory polyline if tracks are enabled.
+          // The visible segment is based on the selected orbit horizon.
           if (showTracks2D) {
             try {
               const now = new Date()
               const positions: Cartesian3[] = []
-              for (let minutes = -30; minutes <= 60; minutes += 2) {
+              const horizonMinutes = Math.max(30, Math.min(orbitHorizonHours * 60, 7 * 24 * 60))
+              for (let minutes = 0; minutes <= horizonMinutes; minutes += 4) {
                 const t = new Date(now.getTime() + minutes * 60 * 1000)
                 const pv = sat.propagate(rec, t)
                 if (!pv.position) continue
@@ -425,7 +455,8 @@ export default function SatelliteLayer({ ids }: Props){
         const rec = sat.twoline2satrec(selected.tle1, selected.tle2)
         const now = new Date()
         const positions: Cartesian3[] = []
-        for (let minutes = -30; minutes <= 60; minutes += 2) {
+        const horizonMinutes = Math.max(30, Math.min(orbitHorizonHours * 60, 7 * 24 * 60))
+        for (let minutes = 0; minutes <= horizonMinutes; minutes += 4) {
           const t = new Date(now.getTime() + minutes * 60 * 1000)
           const pv = sat.propagate(rec, t)
           if (!pv.position) continue
@@ -454,7 +485,7 @@ export default function SatelliteLayer({ ids }: Props){
     } else {
       clearTrack()
     }
-  }, [selected, showOnlySelected, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit])
+  }, [selected, showOnlySelected, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit, orbitPlay, orbitHorizonHours, trackRefreshToken])
   return null
 }
 

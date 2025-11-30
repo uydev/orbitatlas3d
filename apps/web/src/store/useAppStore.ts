@@ -15,6 +15,11 @@ interface State {
   selected?: SatSummary
   // Shared real-time clock used to keep 2D and 3D views in sync
   simulationTime?: Date
+  // Orbit playback controls for 3D view
+  orbitPlay: boolean
+  orbitHorizonHours: number
+  orbitResetCounter: number
+  trackRefreshToken: number
   setMode: (m: Mode) => void
   select: (s?: SatSummary) => void
   showSatellites: boolean
@@ -39,12 +44,20 @@ interface State {
   showOnlySelected: boolean
   toggleShowOnlySelected: () => void
   setSimulationTime: (t: Date) => void
+  setOrbitPlay: (play: boolean) => void
+  setOrbitHorizonHours: (h: number) => void
+  resetOrbitPlayback: () => void
+  refreshTracks: () => void
 }
 const useAppStore = create<State>((set)=>(
   {
     mode: '3D',
     selected: undefined,
     simulationTime: undefined,
+    orbitPlay: false,
+    orbitHorizonHours: 24,
+    orbitResetCounter: 0,
+    trackRefreshToken: 0,
     showSatellites: true,
     satVisualMode: 'billboard',
     sidebarOpen: true,
@@ -72,7 +85,14 @@ const useAppStore = create<State>((set)=>(
     toggleOcclude3D: ()=>set((state)=>({occlude3D: !state.occlude3D})),
     setSatLimit: (n)=>set({ satLimit: Math.max(1, Math.floor(n)) }),
     toggleShowOnlySelected: ()=>set((state)=>({showOnlySelected: !state.showOnlySelected})),
-    setSimulationTime: (t)=>set({ simulationTime: t })
+    setSimulationTime: (t)=>set({ simulationTime: t }),
+    setOrbitPlay: (play)=>set({ orbitPlay: play }),
+    setOrbitHorizonHours: (h)=>set({ orbitHorizonHours: Math.max(1, Math.floor(h)) }),
+    resetOrbitPlayback: ()=>set((state)=>({
+      orbitPlay: false,
+      orbitResetCounter: state.orbitResetCounter + 1,
+    })),
+    refreshTracks: ()=>set((state)=>({ trackRefreshToken: state.trackRefreshToken + 1 })),
   }
 ))
 export default useAppStore
