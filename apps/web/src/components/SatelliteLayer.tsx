@@ -1,12 +1,21 @@
 import { useEffect } from 'react'
 import { CallbackProperty, Cartesian2, Cartesian3, Color, HeadingPitchRange, JulianDate, NearFarScalar, VerticalOrigin, LabelStyle } from 'cesium'
 import * as sat from 'satellite.js'
-import { fetchActive } from '../lib/celestrak'
+import { fetchSatellites } from '../lib/celestrak'
 import useAppStore from '../store/useAppStore'
+import { getConstellationFilterOption, matchesConstellationFilter } from '../lib/constellationFilters'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, setSimulationTime, orbitPlay, orbitHorizonHours, trackRefreshToken } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, setSimulationTime, orbitPlay, orbitHorizonHours, trackRefreshToken, constellationFilter, toggleSatellites } = useAppStore()
+  
+  // Auto-enable satellites when a filter is selected
+  useEffect(() => {
+    if (constellationFilter && !showSatellites) {
+      console.log('[SatelliteLayer] Auto-enabling satellites for filter:', constellationFilter)
+      toggleSatellites()
+    }
+  }, [constellationFilter, showSatellites, toggleSatellites])
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -53,6 +62,10 @@ export default function SatelliteLayer({ ids }: Props){
     tickSimTime()
     const simInterval = setInterval(tickSimTime, 1000)
 
+    // If a filter is selected, force satellites to be visible
+    if (constellationFilter && !showSatellites) {
+      console.log('[SatelliteLayer] Filter selected but satellites hidden - this should not happen (auto-enable should have triggered)')
+    }
     if (!showSatellites) {
       clearSatellites()
       clearTrack()
@@ -138,7 +151,7 @@ export default function SatelliteLayer({ ids }: Props){
         } else if (selected?.norad_id) {
           // Try to fetch and locate TLEs for just the selected from the API
           try {
-            const list = await fetchActive(Math.max(1000, satLimit))
+            const list = await fetchSatellites(Math.max(1000, satLimit))
             const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
             if (s?.TLE_LINE1 && s?.TLE_LINE2) {
               select({ norad_id: s.NORAD_CAT_ID, name: s.OBJECT_NAME, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
@@ -151,19 +164,70 @@ export default function SatelliteLayer({ ids }: Props){
           return
         }
       }
+      const filterOption = getConstellationFilterOption(constellationFilter)
+      console.log(`[SatelliteLayer] Fetching satellites: filter=${constellationFilter || 'none'}, groupId=${filterOption?.groupId || 'none'}, limit=${satLimit}`)
       let sats
+      let usedGroupEndpoint = false
+      let needsClientSideFilter = true  // Always use client-side filtering as primary method
+      
+      // When filtering is needed, always fetch a large set for reliable client-side filtering
+      const clientSideLimit = constellationFilter ? Math.max(satLimit, 10000) : satLimit
+      
       try {
-        sats = await fetchActive(satLimit) // SAT LIMIT
-      } catch (e) {
-        console.error('Failed to fetch satellites:', e)
+        // Try group endpoint as optimization (with short timeout), but always fallback to client-side
+        if (filterOption?.groupId) {
+          try {
+            // Try group endpoint - if it works quickly, great, otherwise fallback
+            sats = await fetchSatellites(satLimit, filterOption.groupId)
+            
+            if (sats && sats.length > 0 && sats.length < 500) {
+              // Got reasonable number of results from group endpoint - use it
+              usedGroupEndpoint = true
+              needsClientSideFilter = false
+              console.log(`[SatelliteLayer] Successfully fetched ${sats.length} satellites from group endpoint for "${filterOption.groupId}"`)
+            } else {
+              // Got too many results or empty - fallback to client-side
+              throw new Error(`Group endpoint returned ${sats?.length || 0} results (expected < 500)`)
+            }
+          } catch (groupError: any) {
+            console.warn(`[SatelliteLayer] Group endpoint failed/timeout for ${filterOption.groupId}, using client-side filtering:`, groupError?.message || groupError)
+            // Fall through to client-side filtering
+            needsClientSideFilter = true
+          }
+        }
+        
+        // Use client-side filtering (either no groupId or group endpoint failed)
+        if (needsClientSideFilter) {
+          console.log(`[SatelliteLayer] Fetching ${clientSideLimit} satellites for client-side filtering`)
+          sats = await fetchSatellites(clientSideLimit)
+        }
+      } catch (e: any) {
+        console.error('[SatelliteLayer] Failed to fetch satellites:', e)
         return
       }
       if (!sats || sats.length === 0) {
-        console.warn('No satellites returned from API')
+        console.warn('[SatelliteLayer] No satellites returned from API')
         return
       }
-      console.log(`Adding ${sats.length} satellites to viewer`)
+      if (usedGroupEndpoint && !needsClientSideFilter) {
+        console.log(`[SatelliteLayer] Using server-filtered results: ${sats.length} satellites from group "${filterOption?.groupId}"`)
+        // Log sample names to verify filtering worked
+        if (sats.length > 0 && sats.length <= 5) {
+          console.log(`[SatelliteLayer] Sample satellite names:`, sats.slice(0, 5).map(s => s.OBJECT_NAME))
+        } else if (sats.length > 5) {
+          console.log(`[SatelliteLayer] Sample satellite names (first 5):`, sats.slice(0, 5).map(s => s.OBJECT_NAME))
+        }
+      } else {
+        console.log(`[SatelliteLayer] Fetched ${sats.length} active satellites, will filter client-side for "${constellationFilter || 'all'}"`)
+        // Log sample names to help debug filtering
+        if (sats.length > 0) {
+          const sampleNames = sats.slice(0, 10).map(s => s.OBJECT_NAME)
+          console.log(`[SatelliteLayer] Sample satellite names (first 10):`, sampleNames)
+        }
+      }
       let focused = false
+      let addedCount = 0
+      let skippedCount = 0
       for (const s of sats) {
         try {
           if (!s.TLE_LINE1 || !s.TLE_LINE2) {
@@ -175,6 +239,35 @@ export default function SatelliteLayer({ ids }: Props){
             console.warn(`Invalid TLE for ${s.OBJECT_NAME || s.NORAD_CAT_ID}`)
             continue
           }
+          // Apply client-side filtering
+          // If group endpoint was used and worked well (few results), trust server filtering
+          // Otherwise, always apply client-side filtering as backup
+          let passesFilter = false
+          if (!constellationFilter) {
+            // No filter - show all
+            passesFilter = true
+          } else if (usedGroupEndpoint && !needsClientSideFilter && sats.length < 100) {
+            // Server filtered successfully (got few results) - trust it, but still allow selected sat through
+            passesFilter = true
+          } else {
+            // Client-side name matching (always use when fallback happened or when no groupId)
+            const name = s.OBJECT_NAME || ''
+            passesFilter = matchesConstellationFilter(name, constellationFilter) ||
+              (selected && selected.norad_id === s.NORAD_CAT_ID)
+            if (passesFilter && addedCount < 5) {
+              // Log first few matching names to verify filtering is working
+              console.log(`[SatelliteLayer] ✓ Match: "${name}" matches filter "${constellationFilter}"`)
+            }
+            if (!passesFilter && skippedCount < 3) {
+              // Log first few non-matching names to help debug
+              console.log(`[SatelliteLayer] Sample non-match: "${name}" doesn't contain keywords for filter "${constellationFilter}"`)
+            }
+          }
+          if (!passesFilter) {
+            skippedCount++
+            continue
+          }
+          addedCount++
           
           // Create position callback that supports optional orbit playback
           let lastSampleTime: Date | undefined
@@ -278,9 +371,13 @@ export default function SatelliteLayer({ ids }: Props){
               requestAnimationFrame(()=>{ try { doFly() } catch {} })
             } catch {}
           }
-        } catch {
-          // ignore individual failures
+        } catch (e) {
+          console.warn(`Failed to add satellite ${s.OBJECT_NAME || s.NORAD_CAT_ID}:`, e)
         }
+      }
+      console.log(`[SatelliteLayer] Summary: Added ${addedCount} entities, skipped ${skippedCount} (total fetched: ${sats.length}, filter: ${constellationFilter || 'none'})`)
+      if (addedCount === 0 && constellationFilter) {
+        console.warn(`[SatelliteLayer] WARNING: No satellites match filter "${constellationFilter}". Try selecting a different constellation or check if satellites exist for this filter.`)
       }
       viewer.trackedEntity = undefined
     }
@@ -306,7 +403,7 @@ export default function SatelliteLayer({ ids }: Props){
       clearTrack()
       clearInterval(simInterval)
     }
-  }, [ids, showSatellites, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, orbitHorizonHours, trackRefreshToken, select])
+  }, [ids, showSatellites, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, orbitHorizonHours, trackRefreshToken, constellationFilter, select])
   // Track selected satellite and handle single-sat mode without rebuilding bulk layer
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER
@@ -426,7 +523,7 @@ export default function SatelliteLayer({ ids }: Props){
         // Try to resolve TLEs for the selected
         ;(async ()=>{
           try {
-            const list = await fetchActive(Math.max(1000, satLimit))
+            const list = await fetchSatellites(Math.max(1000, satLimit))
             const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
             if (s?.TLE_LINE1 && s?.TLE_LINE2) {
               renderSingle(s.TLE_LINE1, s.TLE_LINE2)
@@ -485,7 +582,7 @@ export default function SatelliteLayer({ ids }: Props){
     } else {
       clearTrack()
     }
-  }, [selected, showOnlySelected, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit, orbitPlay, orbitHorizonHours, trackRefreshToken])
+  }, [selected, showOnlySelected, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit, orbitPlay, orbitHorizonHours, trackRefreshToken, constellationFilter])
   return null
 }
 

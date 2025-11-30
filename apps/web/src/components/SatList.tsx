@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fetchActive } from '../lib/celestrak'
+import { fetchSatellites } from '../lib/celestrak'
 import useAppStore, { SatSummary } from '../store/useAppStore'
+import { getConstellationFilterOption, matchesConstellationFilter } from '../lib/constellationFilters'
 
 export default function SatList(){
   const [items, setItems] = useState<SatSummary[]>([])
+  const [allItems, setAllItems] = useState<SatSummary[]>([]) // Keep all loaded satellites for NORAD ID search
   const [byId, setById] = useState<Map<number, {name: string; tle1?: string; tle2?: string}>>(new Map())
   const [error, setError] = useState<string|undefined>()
   const [loading, setLoading] = useState(false)
   const [q, setQ] = useState('')
-  const { selected, select, satLimit } = useAppStore()
+  const { selected, select, satLimit, constellationFilter } = useAppStore()
 
-  useEffect(()=>{ void load() },[satLimit])
+  useEffect(()=>{ void load() },[satLimit, constellationFilter])
 
   async function load(){
     setLoading(true)
@@ -18,22 +20,40 @@ export default function SatList(){
     try {
       let list = [] as any[]
       let lastErr: any
+      const option = getConstellationFilterOption(constellationFilter)
       for (let i=0;i<3;i++){
         try {
-          list = await fetchActive(satLimit) // respect global sat limit
+          list = await fetchSatellites(satLimit, option?.groupId) // Try group endpoint first, fallback to active
           if (Array.isArray(list) && list.length>0) break
         } catch(e){ lastErr = e }
         await new Promise(r=>setTimeout(r, (i+1)*800))
       }
       if (!Array.isArray(list) || list.length===0) throw lastErr || new Error('No data')
+      // Don't filter here - we'll filter after storing all items so NORAD ID search works
       const map = new Map<number, {name:string; tle1?: string; tle2?: string}>()
-      const mapped = list.map((s:any)=> {
+      const allMapped = list.map((s:any)=> {
         const id = Number(s.NORAD_CAT_ID)
         map.set(id, { name: s.OBJECT_NAME, tle1: s.TLE_LINE1, tle2: s.TLE_LINE2 })
         return { norad_id: id, name: s.OBJECT_NAME }
       })
       setById(map)
-      setItems(mapped)
+      setAllItems(allMapped) // Store all satellites
+      
+      // Apply constellation filter to items
+      const filteredMapped = constellationFilter 
+        ? allMapped.filter(s => matchesConstellationFilter(s.name, constellationFilter))
+        : allMapped
+        
+      // If we fell back to a large dataset (e.g. 10000), we should trim the list 
+      // to the user's requested limit (e.g. 600) for performance, BUT only after filtering.
+      // This ensures we show "600 Starlink satellites" rather than "0 Starlink satellites found in the first 600 active ones".
+      const finalItems = filteredMapped.slice(0, satLimit)
+      
+      setItems(finalItems)
+      
+      if (constellationFilter && selected && !filteredMapped.some((s)=>s.norad_id === selected.norad_id)) {
+        select(undefined)
+      }
     } catch (e:any) {
       setError(e?.message || 'Failed to load satellites')
       setItems([])
@@ -43,13 +63,22 @@ export default function SatList(){
   }
 
   const filtered = useMemo(()=>{
-    const query = q.trim().toLowerCase()
+    const query = q.trim()
     if (!query) return items
-    return items.filter(s=> 
-      s.name.toLowerCase().includes(query) || 
-      String(s.norad_id).includes(query)
-    )
-  }, [q, items])
+    
+    // If query is all digits, it's likely a NORAD ID search
+    // For NORAD ID searches, search in ALL loaded satellites (not just filtered by constellation)
+    // This allows finding any satellite by ID even if it doesn't match the current filter
+    const isNoradIdSearch = /^\d+$/.test(query)
+    const searchItems = isNoradIdSearch ? allItems : items
+    
+    const queryLower = query.toLowerCase()
+    return searchItems.filter(s=> {
+      const nameMatch = s.name.toLowerCase().includes(queryLower)
+      const noradMatch = String(s.norad_id).includes(query) // Use original query for NORAD ID (preserves leading zeros if any)
+      return nameMatch || noradMatch
+    })
+  }, [q, items, allItems])
 
   return (
     <div className="mt-3 text-sm">

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import * as sat from 'satellite.js'
-import { fetchActive } from '../lib/celestrak'
+import { fetchSatellites } from '../lib/celestrak'
 import useAppStore from '../store/useAppStore'
+import { getConstellationFilterOption, matchesConstellationFilter } from '../lib/constellationFilters'
 
 // Fix for default marker icons in Leaflet with Vite
 // We'll use circle markers instead, so we don't need the default icon fix
@@ -17,7 +18,7 @@ export default function Map2D() {
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
   const [mapReady, setMapReady] = useState(false)
-  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit, showOnlySelected, simulationTime } = useAppStore()
+  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit, showOnlySelected, simulationTime, constellationFilter } = useAppStore()
 
   function getIcon(selected: boolean) {
     // Make the selected icon much larger in Icons mode; no extra circle overlay
@@ -158,7 +159,7 @@ export default function Map2D() {
           if (!tle1 || !tle2) {
             try {
               // Fetch a larger set to ensure we find the satellite
-              const list = await fetchActive(Math.max(9999, satLimit))
+              const list = await fetchSatellites(Math.max(9999, satLimit))
               const s = list.find((x:any)=> x.NORAD_CAT_ID === selected.norad_id)
               if (s?.TLE_LINE1 && s?.TLE_LINE2) {
                 // Update selection with TLEs and let effect re-run
@@ -251,12 +252,21 @@ export default function Map2D() {
           setLoading(false)
           return
         }
-        const sats = await fetchActive(satLimit) // SAT LIMIT
-        if (!sats || sats.length === 0) {
+        const filterOption = getConstellationFilterOption(constellationFilter)
+        // Try group endpoint first; if it fails, fetchSatellites will auto-fallback to a large set (10000)
+        const satsAll = await fetchSatellites(satLimit, filterOption?.groupId)
+        
+        if (!satsAll || satsAll.length === 0) {
           console.warn('No satellites returned from API')
           setLoading(false)
           return
         }
+
+        // Filter satellites based on constellation filter
+        // If we got a large fallback list, this extracts just the ones we want
+        const sats = constellationFilter 
+          ? satsAll.filter(s => matchesConstellationFilter(s.OBJECT_NAME || '', constellationFilter))
+          : satsAll.slice(0, satLimit)
 
         // Clear existing markers
         markersRef.current.forEach((marker) => {
@@ -283,6 +293,15 @@ export default function Map2D() {
               return
             }
             
+            // Always apply client-side filtering (we always fetch from /satellites/active)
+            const passesFilter =
+              !constellationFilter ||
+              matchesConstellationFilter(s.OBJECT_NAME || '', constellationFilter) ||
+              (selected && selected.norad_id === s.NORAD_CAT_ID)
+            if (!passesFilter) {
+              return
+            }
+
             const positionAndVelocity = sat.propagate(rec, now)
 
             if (positionAndVelocity.position && !positionAndVelocity.error) {
@@ -440,7 +459,7 @@ export default function Map2D() {
       // Cleanup window function
       delete (window as any).selectSatellite
     }
-  }, [mapReady, showSatellites, observer, overheadOnly, showLabels2D, showTracks2D, satLimit, showOnlySelected, selected, satVisualMode, sidebarOpen, toggleSidebar])
+  }, [mapReady, showSatellites, observer, overheadOnly, showLabels2D, showTracks2D, satLimit, showOnlySelected, selected, satVisualMode, sidebarOpen, toggleSidebar, simulationTime, constellationFilter])
 
   // Show observer marker and recenter
   useEffect(() => {

@@ -20,6 +20,7 @@ interface State {
   orbitHorizonHours: number
   orbitResetCounter: number
   trackRefreshToken: number
+  constellationFilter?: string
   setMode: (m: Mode) => void
   select: (s?: SatSummary) => void
   showSatellites: boolean
@@ -48,6 +49,7 @@ interface State {
   setOrbitHorizonHours: (h: number) => void
   resetOrbitPlayback: () => void
   refreshTracks: () => void
+  setConstellationFilter: (value?: string) => void
 }
 const useAppStore = create<State>((set)=>(
   {
@@ -58,6 +60,7 @@ const useAppStore = create<State>((set)=>(
     orbitHorizonHours: 24,
     orbitResetCounter: 0,
     trackRefreshToken: 0,
+    constellationFilter: undefined,
     showSatellites: true,
     satVisualMode: 'billboard',
     sidebarOpen: true,
@@ -93,6 +96,7 @@ const useAppStore = create<State>((set)=>(
       orbitResetCounter: state.orbitResetCounter + 1,
     })),
     refreshTracks: ()=>set((state)=>({ trackRefreshToken: state.trackRefreshToken + 1 })),
+    setConstellationFilter: (value)=>set({ constellationFilter: value }),
   }
 ))
 export default useAppStore

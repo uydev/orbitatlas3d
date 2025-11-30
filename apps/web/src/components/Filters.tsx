@@ -1,9 +1,14 @@
 import useAppStore from '../store/useAppStore'
 import { useState } from 'react'
+import { CONSTELLATION_FILTERS, getConstellationFilterOption, matchesConstellationFilter } from '../lib/constellationFilters'
 
 export default function Filters(){
-  const { showSatellites, toggleSatellites, satVisualMode, setSatVisualMode, showLabels2D, toggleLabels2D, showTracks2D, toggleTracks2D, occlude3D, toggleOcclude3D, satLimit, setSatLimit, showOnlySelected, toggleShowOnlySelected } = useAppStore()
+  const { showSatellites, toggleSatellites, satVisualMode, setSatVisualMode, showLabels2D, toggleLabels2D, showTracks2D, toggleTracks2D, occlude3D, toggleOcclude3D, satLimit, setSatLimit, showOnlySelected, toggleShowOnlySelected, constellationFilter, setConstellationFilter, refreshTracks, selected, select } = useAppStore()
   const [showConfig, setShowConfig] = useState(false)
+  const groupedFilters = CONSTELLATION_FILTERS.reduce<Record<string, typeof CONSTELLATION_FILTERS>>((acc, item)=>{
+    acc[item.group] = acc[item.group] ? [...acc[item.group], item] : [item]
+    return acc
+  }, {})
   return (
     <div className="flex items-center gap-3 px-3 py-1 rounded bg-zinc-800 relative">
       <span className="text-xs uppercase tracking-wide opacity-70">Layers</span>
@@ -40,6 +45,40 @@ export default function Filters(){
             <input type="checkbox" checked={showOnlySelected} onChange={toggleShowOnlySelected} />
             Show only selected satellite (2D/3D)
           </label>
+          <div className="text-xs opacity-90 select-none py-0.5 space-y-1">
+            <span>Constellation filter</span>
+            <select
+              className="w-full bg-zinc-800 border border-white/10 rounded px-2 py-1 text-xs"
+              value={constellationFilter || ''}
+              onChange={(e)=>{
+                const value = e.target.value || undefined
+                setConstellationFilter(value)
+                refreshTracks()
+                // Auto-enable satellite visibility when a filter is selected
+                if (value && !showSatellites) {
+                  toggleSatellites()
+                }
+                if (value && selected) {
+                  const option = getConstellationFilterOption(value)
+                  const matches = option?.groupId
+                    ? matchesConstellationFilter(selected.name || '', value)
+                    : matchesConstellationFilter(selected.name || '', value)
+                  if (!matches) {
+                    select(undefined)
+                  }
+                }
+              }}
+            >
+              <option value="">All constellations</option>
+              {Object.entries(groupedFilters).map(([group, options])=>(
+                <optgroup key={group} label={group}>
+                  {options.map((opt)=>(
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </div>
           <div className="flex items-center gap-2 text-xs opacity-90 select-none py-0.5">
             <span>Sat limit</span>
             <select

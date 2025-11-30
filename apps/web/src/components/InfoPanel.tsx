@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import useAppStore from '../store/useAppStore'
 import * as Cesium from 'cesium'
 import * as sat from 'satellite.js'
+import { detectConstellationFromName } from '../lib/constellationFilters'
 export default function InfoPanel(){
   const {
     selected,
@@ -13,10 +14,10 @@ export default function InfoPanel(){
     showTracks2D,
     toggleTracks2D,
     resetOrbitPlayback,
+    refreshTracks,
     showOnlySelected,
     toggleShowOnlySelected,
     select,
-    refreshTracks,
   } = useAppStore()
   const [coords, setCoords] = useState<{lat:number, lon:number, alt:number}|undefined>()
   useEffect(()=>{
@@ -68,17 +69,30 @@ export default function InfoPanel(){
     <div>
       <h3 className="text-lg font-semibold">Info</h3>
       {!selected && <div className="text-sm opacity-80">Select a satellite to view details.</div>}
-      {selected && (
-        <div className="mt-2 text-sm">
-          <div className="font-medium">{selected.name}</div>
-          <div className="opacity-80">NORAD {selected.norad_id}</div>
-          {coords && (
-            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
-              <div className="opacity-70">Latitude</div><div>{coords.lat.toFixed(4)}°</div>
-              <div className="opacity-70">Longitude</div><div>{coords.lon.toFixed(4)}°</div>
-              <div className="opacity-70">Altitude</div><div>{(coords.alt/1000).toFixed(1)} km</div>
-            </div>
-          )}
+      {selected && (() => {
+        const constellation = detectConstellationFromName(selected.name)
+        return (
+          <div className="mt-2 text-sm">
+            <div className="font-medium">{selected.name}</div>
+            <div className="opacity-80">NORAD {selected.norad_id}</div>
+            {constellation && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="opacity-70">Constellation:</span>
+                <span className="px-2 py-0.5 rounded bg-cyan-900/50 text-cyan-200 text-xs font-medium border border-cyan-700/50">
+                  {constellation.label}
+                </span>
+                {constellation.group && (
+                  <span className="opacity-60 text-xs">({constellation.group})</span>
+                )}
+              </div>
+            )}
+            {coords && (
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                <div className="opacity-70">Latitude</div><div>{coords.lat.toFixed(4)}°</div>
+                <div className="opacity-70">Longitude</div><div>{coords.lon.toFixed(4)}°</div>
+                <div className="opacity-70">Altitude</div><div>{(coords.alt/1000).toFixed(1)} km</div>
+              </div>
+            )}
           {mode === '3D' && (
             <div className="mt-3 space-y-2">
               <div className="text-xs font-semibold opacity-80">Orbit playback</div>
@@ -99,9 +113,6 @@ export default function InfoPanel(){
                     }
                     // If starting playback, also ensure "Show only selected satellite"
                     // is enabled so we focus on a single object without clutter.
-                    if (next && !showOnlySelected) {
-                      toggleShowOnlySelected()
-                    }
                     // When starting playback in 3D, immediately focus the camera
                     // on the selected satellite so the motion is visible.
                     if (next && mode === '3D' && selected) {
@@ -141,11 +152,6 @@ export default function InfoPanel(){
                   onChange={(e)=>{
                     const h = parseInt(e.target.value, 10) || 12
                     setOrbitHorizonHours(h)
-                    // Nudge SatelliteLayer to rebuild the track immediately by
-                    // re-emitting the current selection (effect depends on `selected`).
-                    if (mode === '3D' && showTracks2D && selected) {
-                      select({ ...selected })
-                    }
                     refreshTracks()
                   }}
                 >
@@ -160,8 +166,9 @@ export default function InfoPanel(){
               </div>
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
