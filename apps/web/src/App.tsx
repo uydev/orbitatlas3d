@@ -32,8 +32,13 @@ export default function App() {
         const dist = fast ? 2.0e6 : 5.0e5
         if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') cam.moveLeft(dist)
         else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') cam.moveRight(dist)
-        else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') cam.moveForward(dist)
-        else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') cam.moveBackward(dist)
+        // Arrows: left/right = pan horizontally, up/down = move camera up/down
+        else if (e.key === 'ArrowUp') cam.moveUp(dist)
+        else if (e.key === 'ArrowDown') cam.moveDown(dist)
+        // W/S: keep original zoom-style forward/back movement
+        else if (e.key === 'w' || e.key === 'W') cam.moveForward(dist)
+        else if (e.key === 's' || e.key === 'S') cam.moveBackward(dist)
+        // Zoom in/out only with +/- keys
         else if (e.key === '+' || e.key === '=') cam.moveForward(dist)
         else if (e.key === '-' || e.key === '_') cam.moveBackward(dist)
         else if (e.key === 'r' || e.key === 'R') {
