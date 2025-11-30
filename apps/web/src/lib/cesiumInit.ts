@@ -5,8 +5,14 @@ export function initCesium(container: string, ionToken: string) {
     Cesium.Ion.defaultAccessToken = ionToken
   }
   const options: any = {
-    requestRenderMode: true,
-    animation: false, timeline: false, geocoder: false, homeButton: true, navigationHelpButton: true, sceneModePicker: true
+    // Continuous render loop so animated materials and moving markers are always visible
+    requestRenderMode: false,
+    animation: false,
+    timeline: false,
+    geocoder: false,
+    homeButton: true,
+    navigationHelpButton: true,
+    sceneModePicker: true,
   }
   if (hasIonToken && typeof (Cesium as any).createWorldTerrain === 'function') {
     options.terrainProvider = (Cesium as any).createWorldTerrain()

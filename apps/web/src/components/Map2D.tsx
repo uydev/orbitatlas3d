@@ -132,6 +132,12 @@ export default function Map2D() {
       return
     }
 
+    // If tracks are toggled off, immediately remove any existing track polylines
+    if (!showTracks2D) {
+      tracksRef.current.forEach((line)=>mapRef.current?.removeLayer(line))
+      tracksRef.current.clear()
+    }
+
     setLoading(true)
     const map = mapRef.current
 

@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit, showOnlySelected, setSimulationTime } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, showTracks2D, occlude3D, satLimit, showOnlySelected, setSimulationTime } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -31,6 +31,18 @@ export default function SatelliteLayer({ ids }: Props){
         })
       }
     }
+    // Helper to remove any existing track polyline / beacon entities
+    const clearTrack = () => {
+      try {
+        const existing = viewer.entities.getById('selected-track')
+        if (existing) viewer.entities.remove(existing)
+      } catch {}
+      try {
+        const beacon = viewer.entities.getById('selected-track-beacon')
+        if (beacon) viewer.entities.remove(beacon)
+      } catch {}
+    }
+
     // Drive shared simulation time from Cesium's clock (real time, but centralized)
     const tickSimTime = () => {
       try {
@@ -43,6 +55,7 @@ export default function SatelliteLayer({ ids }: Props){
 
     if (!showSatellites) {
       clearSatellites()
+      clearTrack()
       return
     }
     try { viewer.selectedEntity = undefined; viewer.trackedEntity = undefined } catch {}
@@ -272,6 +285,7 @@ export default function SatelliteLayer({ ids }: Props){
     return () => {
       try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
+      clearTrack()
       clearInterval(simInterval)
     }
   }, [ids, showSatellites, satVisualMode, showLabels2D, occlude3D, satLimit, showOnlySelected, select])
@@ -279,7 +293,23 @@ export default function SatelliteLayer({ ids }: Props){
   useEffect(()=>{
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
-    if (!selected) return
+
+    // Track polyline helper – visualizes trajectory for the selected satellite only
+    const clearTrack = () => {
+      try {
+        const existing = viewer.entities.getById('selected-track')
+        if (existing) viewer.entities.remove(existing)
+      } catch {}
+      try {
+        const beacon = viewer.entities.getById('selected-track-beacon')
+        if (beacon) viewer.entities.remove(beacon)
+      } catch {}
+    }
+
+    if (!selected) {
+      clearTrack()
+      return
+    }
     if (showOnlySelected) {
       // Render just the selected satellite using its TLE (or fetch it), then fly
       const renderSingle = (tle1: string, tle2: string) => {
@@ -307,6 +337,71 @@ export default function SatelliteLayer({ ids }: Props){
             label: { show: !!showLabels2D, text: selected.name, font:'14px "JetBrains Mono", "Fira Mono", monospace', fillColor: Color.WHITE, outlineColor: Color.BLACK, outlineWidth:3, style: LabelStyle.FILL_AND_OUTLINE, pixelOffset: new Cartesian2(0,-58), disableDepthTestDistance: occlude3D?0:1.0e8 },
             billboard: { show: satVisualMode==='billboard', image:'/icons/satellite.svg', width:56, height:56, color: Color.CYAN, verticalOrigin: VerticalOrigin.CENTER, pixelOffset: new Cartesian2(0,-24), disableDepthTestDistance: occlude3D?0:1.0e8 }
           })
+          // Build a static trajectory polyline around "now" if tracks are enabled
+          if (showTracks2D) {
+            try {
+              const now = new Date()
+              const positions: Cartesian3[] = []
+              for (let minutes = -30; minutes <= 60; minutes += 2) {
+                const t = new Date(now.getTime() + minutes * 60 * 1000)
+                const pv = sat.propagate(rec, t)
+                if (!pv.position) continue
+                const gmst = sat.gstime(t)
+                const geodetic = sat.eciToGeodetic(pv.position as any, gmst)
+                const lat = geodetic.latitude * 180 / Math.PI
+                const lon = geodetic.longitude * 180 / Math.PI
+                const alt = geodetic.height * 1000
+                positions.push(Cartesian3.fromDegrees(lon, lat, alt))
+              }
+              if (positions.length >= 2) {
+                clearTrack()
+                // Base orbit line
+                viewer.entities.add({
+                  id: 'selected-track',
+                  polyline: {
+                    positions,
+                    width: 1.5,
+                    material: Color.fromBytes(255, 216, 0, 220),
+                    clampToGround: false
+                  }
+                })
+                // Single bright beacon that moves along the precomputed orbit every 2 seconds
+                try {
+                  const beaconPosition = new CallbackProperty((time: any) => {
+                    try {
+                      const baseMs = Date.now()
+                      const periodSec = 2.0
+                      const t = (baseMs / 1000 / periodSec) % 1 // 0..1 over 2s
+                      const idxFloat = t * (positions.length - 1)
+                      const idx = Math.floor(idxFloat)
+                      const nextIdx = Math.min(positions.length - 1, idx + 1)
+                      const frac = idxFloat - idx
+                      const p1 = positions[idx] || positions[0]
+                      const p2 = positions[nextIdx] || positions[positions.length - 1]
+                      const out = new Cartesian3()
+                      return Cartesian3.lerp(p1, p2, frac, out)
+                    } catch {
+                      return positions[0]
+                    }
+                  }, false)
+                  const beaconColor = Color.fromBytes(255, 255, 255, 255)
+                  viewer.entities.add({
+                    id: 'selected-track-beacon',
+                    position: beaconPosition,
+                    point: {
+                      pixelSize: 32, // very large so direction is obvious
+                      color: beaconColor,
+                      outlineColor: Color.BLACK,
+                      outlineWidth: 2,
+                    }
+                  })
+                } catch {}
+              }
+            } catch {}
+          } else {
+            clearTrack()
+          }
+
           requestAnimationFrame(()=>{ try {
             viewer.selectedEntity = ent
             const cameraHeight = viewer.camera?.positionCartographic?.height ?? 2.0e6
@@ -342,7 +437,74 @@ export default function SatelliteLayer({ ids }: Props){
         offset: new HeadingPitchRange(0, -0.35, Math.max(cameraHeight, 1.5e6))
       })
     }
-  }, [selected, showOnlySelected, satVisualMode, showLabels2D, occlude3D, satLimit])
+
+    // In normal (bulk) mode, add/remove trajectory for selected satellite only
+    if (showTracks2D && selected.tle1 && selected.tle2) {
+      try {
+        const rec = sat.twoline2satrec(selected.tle1, selected.tle2)
+        const now = new Date()
+        const positions: Cartesian3[] = []
+        for (let minutes = -30; minutes <= 60; minutes += 2) {
+          const t = new Date(now.getTime() + minutes * 60 * 1000)
+          const pv = sat.propagate(rec, t)
+          if (!pv.position) continue
+          const gmst = sat.gstime(t)
+          const geodetic = sat.eciToGeodetic(pv.position as any, gmst)
+          const lat = geodetic.latitude * 180 / Math.PI
+          const lon = geodetic.longitude * 180 / Math.PI
+          const alt = geodetic.height * 1000
+          positions.push(Cartesian3.fromDegrees(lon, lat, alt))
+        }
+        if (positions.length >= 2) {
+          clearTrack()
+          viewer.entities.add({
+            id: 'selected-track',
+            polyline: {
+              positions,
+              width: 1.5,
+              material: Color.fromBytes(255, 216, 0, 220),
+              clampToGround: false
+            }
+          })
+          // Single bright beacon that moves along the precomputed orbit every 2 seconds
+          try {
+            const beaconPosition = new CallbackProperty((time: any) => {
+              try {
+                const baseMs = Date.now()
+                const periodSec = 2.0
+                const t = (baseMs / 1000 / periodSec) % 1
+                const idxFloat = t * (positions.length - 1)
+                const idx = Math.floor(idxFloat)
+                const nextIdx = Math.min(positions.length - 1, idx + 1)
+                const frac = idxFloat - idx
+                const p1 = positions[idx] || positions[0]
+                const p2 = positions[nextIdx] || positions[positions.length - 1]
+                const out = new Cartesian3()
+                return Cartesian3.lerp(p1, p2, frac, out)
+              } catch {
+                return positions[0]
+              }
+            }, false)
+            const beaconColor = Color.fromBytes(255, 255, 255, 255)
+            viewer.entities.add({
+              id: 'selected-track-beacon',
+              position: beaconPosition,
+              point: {
+                pixelSize: 32,
+                color: beaconColor,
+                outlineColor: Color.BLACK,
+                outlineWidth: 2,
+              }
+            })
+          } catch {}
+        }
+      } catch {
+        clearTrack()
+      }
+    } else {
+      clearTrack()
+    }
+  }, [selected, showOnlySelected, satVisualMode, showLabels2D, showTracks2D, occlude3D, satLimit])
   return null
 }
 
