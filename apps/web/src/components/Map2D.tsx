@@ -17,7 +17,7 @@ export default function Map2D() {
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(0)
   const [mapReady, setMapReady] = useState(false)
-  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit, showOnlySelected } = useAppStore()
+  const { selected, select, showSatellites, mode, observer, overheadOnly, showLabels2D, showTracks2D, satVisualMode, sidebarOpen, toggleSidebar, satLimit, showOnlySelected, simulationTime } = useAppStore()
 
   function getIcon(selected: boolean) {
     // Make the selected icon much larger in Icons mode; no extra circle overlay
@@ -170,7 +170,7 @@ export default function Map2D() {
             setLoading(false); 
             return 
           }
-          const now = new Date()
+          const now = simulationTime || new Date()
           const gmst = sat.gstime(now)
           const rec = sat.twoline2satrec(tle1, tle2)
           const pv = sat.propagate(rec, now)
@@ -260,7 +260,7 @@ export default function Map2D() {
         tracksRef.current.forEach((line)=>map.removeLayer(line))
         tracksRef.current.clear()
 
-        const now = new Date()
+        const now = simulationTime || new Date()
         const gmst = sat.gstime(now)
 
         // Add satellites to map

@@ -13,6 +13,8 @@ export interface Observer {
 interface State {
   mode: Mode
   selected?: SatSummary
+  // Shared real-time clock used to keep 2D and 3D views in sync
+  simulationTime?: Date
   setMode: (m: Mode) => void
   select: (s?: SatSummary) => void
   showSatellites: boolean
@@ -36,11 +38,13 @@ interface State {
   setSatLimit: (n: number) => void
   showOnlySelected: boolean
   toggleShowOnlySelected: () => void
+  setSimulationTime: (t: Date) => void
 }
 const useAppStore = create<State>((set)=>(
   {
     mode: '3D',
     selected: undefined,
+    simulationTime: undefined,
     showSatellites: true,
     satVisualMode: 'billboard',
     sidebarOpen: true,
@@ -67,7 +71,8 @@ const useAppStore = create<State>((set)=>(
     toggleTracks2D: ()=>set((state)=>({showTracks2D: !state.showTracks2D})),
     toggleOcclude3D: ()=>set((state)=>({occlude3D: !state.occlude3D})),
     setSatLimit: (n)=>set({ satLimit: Math.max(1, Math.floor(n)) }),
-    toggleShowOnlySelected: ()=>set((state)=>({showOnlySelected: !state.showOnlySelected}))
+    toggleShowOnlySelected: ()=>set((state)=>({showOnlySelected: !state.showOnlySelected})),
+    setSimulationTime: (t)=>set({ simulationTime: t })
   }
 ))
 export default useAppStore

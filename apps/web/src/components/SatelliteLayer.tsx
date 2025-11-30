@@ -6,7 +6,7 @@ import useAppStore from '../store/useAppStore'
 const SAT_PREFIX = 'sat-'
 interface Props { ids?: number[] }
 export default function SatelliteLayer({ ids }: Props){
-  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit, showOnlySelected } = useAppStore()
+  const { selected, showSatellites, satVisualMode, select, showLabels2D, occlude3D, satLimit, showOnlySelected, setSimulationTime } = useAppStore()
   useEffect(() => {
     const viewer = (window as any).CESIUM_VIEWER
     if (!viewer) return
@@ -31,6 +31,16 @@ export default function SatelliteLayer({ ids }: Props){
         })
       }
     }
+    // Drive shared simulation time from Cesium's clock (real time, but centralized)
+    const tickSimTime = () => {
+      try {
+        const now = JulianDate.toDate(viewer.clock.currentTime)
+        setSimulationTime(now)
+      } catch {}
+    }
+    tickSimTime()
+    const simInterval = setInterval(tickSimTime, 1000)
+
     if (!showSatellites) {
       clearSatellites()
       return
@@ -262,6 +272,7 @@ export default function SatelliteLayer({ ids }: Props){
     return () => {
       try { viewer.selectedEntityChanged?.removeEventListener?.(onSelectedChanged) } catch {}
       clearSatellites()
+      clearInterval(simInterval)
     }
   }, [ids, showSatellites, satVisualMode, showLabels2D, occlude3D, satLimit, showOnlySelected, select])
   // Track selected satellite and handle single-sat mode without rebuilding bulk layer
