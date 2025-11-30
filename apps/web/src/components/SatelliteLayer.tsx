@@ -319,9 +319,21 @@ export default function SatelliteLayer({ ids }: Props){
           const position = new CallbackProperty((time: any) => {
             try {
               const now = JulianDate.toDate(time || viewer.clock.currentTime)
-              const pv = sat.propagate(rec, now)
+              // When tracks are enabled, exaggerate motion along the orbit to show direction:
+              // - First 3s of a 5s cycle: sit at the real-time position
+              // - Next 2s: run quickly along ~60 minutes of future orbit
+              let sampleTime = now
+              if (showTracks2D) {
+                const cycle = (Date.now() / 1000) % 5 // 0..5
+                if (cycle >= 3) {
+                  const phase = (cycle - 3) / 2 // 0..1 over the fast segment
+                  const minutesAhead = phase * 60
+                  sampleTime = new Date(now.getTime() + minutesAhead * 60 * 1000)
+                }
+              }
+              const pv = sat.propagate(rec, sampleTime)
               if (!pv.position || pv.error) return Cartesian3.fromDegrees(0,0,0)
-              const gmst = sat.gstime(now)
+              const gmst = sat.gstime(sampleTime)
               const geodetic = sat.eciToGeodetic(pv.position, gmst)
               const lat = geodetic.latitude * 180/Math.PI
               const lon = geodetic.longitude * 180/Math.PI
@@ -365,37 +377,6 @@ export default function SatelliteLayer({ ids }: Props){
                     clampToGround: false
                   }
                 })
-                // Single bright beacon that moves along the precomputed orbit every 2 seconds
-                try {
-                  const beaconPosition = new CallbackProperty((time: any) => {
-                    try {
-                      const baseMs = Date.now()
-                      const periodSec = 2.0
-                      const t = (baseMs / 1000 / periodSec) % 1 // 0..1 over 2s
-                      const idxFloat = t * (positions.length - 1)
-                      const idx = Math.floor(idxFloat)
-                      const nextIdx = Math.min(positions.length - 1, idx + 1)
-                      const frac = idxFloat - idx
-                      const p1 = positions[idx] || positions[0]
-                      const p2 = positions[nextIdx] || positions[positions.length - 1]
-                      const out = new Cartesian3()
-                      return Cartesian3.lerp(p1, p2, frac, out)
-                    } catch {
-                      return positions[0]
-                    }
-                  }, false)
-                  const beaconColor = Color.fromBytes(255, 255, 255, 255)
-                  viewer.entities.add({
-                    id: 'selected-track-beacon',
-                    position: beaconPosition,
-                    point: {
-                      pixelSize: 32, // very large so direction is obvious
-                      color: beaconColor,
-                      outlineColor: Color.BLACK,
-                      outlineWidth: 2,
-                    }
-                  })
-                } catch {}
               }
             } catch {}
           } else {
@@ -466,37 +447,6 @@ export default function SatelliteLayer({ ids }: Props){
               clampToGround: false
             }
           })
-          // Single bright beacon that moves along the precomputed orbit every 2 seconds
-          try {
-            const beaconPosition = new CallbackProperty((time: any) => {
-              try {
-                const baseMs = Date.now()
-                const periodSec = 2.0
-                const t = (baseMs / 1000 / periodSec) % 1
-                const idxFloat = t * (positions.length - 1)
-                const idx = Math.floor(idxFloat)
-                const nextIdx = Math.min(positions.length - 1, idx + 1)
-                const frac = idxFloat - idx
-                const p1 = positions[idx] || positions[0]
-                const p2 = positions[nextIdx] || positions[positions.length - 1]
-                const out = new Cartesian3()
-                return Cartesian3.lerp(p1, p2, frac, out)
-              } catch {
-                return positions[0]
-              }
-            }, false)
-            const beaconColor = Color.fromBytes(255, 255, 255, 255)
-            viewer.entities.add({
-              id: 'selected-track-beacon',
-              position: beaconPosition,
-              point: {
-                pixelSize: 32,
-                color: beaconColor,
-                outlineColor: Color.BLACK,
-                outlineWidth: 2,
-              }
-            })
-          } catch {}
         }
       } catch {
         clearTrack()
