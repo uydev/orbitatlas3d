@@ -1,4 +1,23 @@
-variable "region" { type = string default = "us-east-1" }
+variable "region" {
+  type    = string
+  default = "eu-west-1"
+}
 
+variable "instance_type" {
+  type    = string
+  default = "t3.micro"
+}
+
+variable "key_name" {
+  type        = string
+  description = "Existing EC2 key pair name for SSH access. Leave empty to disable SSH."
+  default     = ""
+}
+
+variable "git_repo_url" {
+  type        = string
+  description = "Git repository URL for the OrbitAtlas3D app."
+  default     = "https://github.com/uydev/orbitatlas3d.git"
+}
 
 
