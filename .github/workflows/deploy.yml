@@ -7,17 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-      - name: Terraform Apply Dev
+      - name: Skip Terraform (run manually)
         run: |
-          cd infra/terraform/envs/dev
-          terraform init -input=false
-          terraform apply -auto-approve
+          echo "Terraform deploy is disabled in CI."
+          echo "Run 'terraform apply' manually from infra/terraform/envs/dev when needed."
 
 
 
