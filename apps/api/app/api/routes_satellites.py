@@ -165,14 +165,6 @@ def _fetch_celestrak_group(group: str) -> list[dict]:
     raise RuntimeError(f"All hosts failed: {last_err}")
 
 
-SPACE_TRACK_USERNAME = os.getenv("SPACE_TRACK_USERNAME")
-SPACE_TRACK_PASSWORD = os.getenv("SPACE_TRACK_PASSWORD")
-SPACE_TRACK_TIMEOUT = float(os.getenv("SPACE_TRACK_TIMEOUT", "25"))
-SPACE_TRACK_LIMIT = int(os.getenv("SPACE_TRACK_LIMIT", "10000"))  # SAT LIMIT
-
-_CACHE_ACTIVE: dict[str, object] = {"expires": 0.0, "data": None}
-
-
 @router.get("/active")
 def list_active(limit: int = 1000):  # SAT LIMIT
     """Return latest active satellites from cache (Redis) or Celestrak.
@@ -221,103 +213,6 @@ def list_group_satellites(group: str, limit: int = 1000):
     if limit and isinstance(limit, int) and limit > 0:
         result = result[:limit]
     return result
-
-
-def _fetch_space_track(limit: int) -> list[dict]:
-    cj = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-    headers = {
-        "User-Agent": "OrbitAtlas/1.0 (+https://orbitatlas.dev)",
-        "Pragma": "no-cache",
-        "Cache-Control": "no-cache",
-        "Accept": "application/json",
-    }
-    login_data = urllib.parse.urlencode(
-        {"identity": SPACE_TRACK_USERNAME, "password": SPACE_TRACK_PASSWORD}
-    ).encode("utf-8")
-    login_req = urllib.request.Request(
-        "https://www.space-track.org/ajaxauth/login",
-        data=login_data,
-        method="POST",
-        headers=headers,
-    )
-    with opener.open(login_req, timeout=SPACE_TRACK_TIMEOUT) as resp:
-        if resp.getcode() != 200:
-            raise RuntimeError(f"Space-Track login failed with status {resp.getcode()}")
-    limit = min(limit or SPACE_TRACK_LIMIT, SPACE_TRACK_LIMIT)
-    # Query tle_latest class which includes TLE1 and TLE2 fields
-    # Filter for recent TLEs (last 30 days) - URL encode the > symbol
-    now_minus_30 = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
-    epoch_filter = urllib.parse.quote(f">{now_minus_30}")
-    tle_url = (
-        "https://www.space-track.org/basicspacedata/query/"
-        f"class/tle_latest/ORDINAL/1/EPOCH/{epoch_filter}/format/json/metadata/false/limit/{limit}"
-    )
-    tle_req = urllib.request.Request(tle_url, headers=headers)
-    with opener.open(tle_req, timeout=SPACE_TRACK_TIMEOUT) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
-    data = json.loads(body)
-    if not isinstance(data, list):
-        raise RuntimeError("Space-Track returned unexpected payload")
-    # Space-Track returns TLE1/TLE2, map to TLE_LINE1/TLE_LINE2
-    # Space-Track already includes OBJECT_NAME and NORAD_CAT_ID
-    for obj in data:
-        if "TLE_LINE1" not in obj and "TLE1" in obj:
-            obj["TLE_LINE1"] = obj["TLE1"]
-        if "TLE_LINE2" not in obj and "TLE2" in obj:
-            obj["TLE_LINE2"] = obj["TLE2"]
-    return data
-
-
-def _fetch_space_track_filtered(name_pattern: str, limit: int) -> list[dict]:
-    """Fetch satellites from Space-Track filtered by object name pattern."""
-    if not SPACE_TRACK_USERNAME or not SPACE_TRACK_PASSWORD:
-        raise RuntimeError("Space-Track credentials not configured")
-    
-    cj = http.cookiejar.CookieJar()
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-    headers = {
-        "User-Agent": "OrbitAtlas/1.0 (+https://orbitatlas.dev)",
-        "Pragma": "no-cache",
-        "Cache-Control": "no-cache",
-        "Accept": "application/json",
-    }
-    login_data = urllib.parse.urlencode(
-        {"identity": SPACE_TRACK_USERNAME, "password": SPACE_TRACK_PASSWORD}
-    ).encode("utf-8")
-    login_req = urllib.request.Request(
-        "https://www.space-track.org/ajaxauth/login",
-        data=login_data,
-        method="POST",
-        headers=headers,
-    )
-    with opener.open(login_req, timeout=SPACE_TRACK_TIMEOUT) as resp:
-        if resp.getcode() != 200:
-            raise RuntimeError(f"Space-Track login failed with status {resp.getcode()}")
-    limit = min(limit or SPACE_TRACK_LIMIT, SPACE_TRACK_LIMIT)
-    # Filter for recent TLEs (last 30 days) and object name pattern
-    now_minus_30 = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
-    epoch_filter = urllib.parse.quote(f">{now_minus_30}")
-    # Space-Track uses ~ for "contains" pattern matching (no wildcard needed, ~ does contains)
-    # Format: OBJECT_NAME~pattern (the ~ operator does substring matching)
-    name_filter = urllib.parse.quote(f"OBJECT_NAME~{name_pattern}")
-    tle_url = (
-        "https://www.space-track.org/basicspacedata/query/"
-        f"class/tle_latest/ORDINAL/1/EPOCH/{epoch_filter}/OBJECT_NAME/{name_filter}/format/json/metadata/false/limit/{limit}"
-    )
-    tle_req = urllib.request.Request(tle_url, headers=headers)
-    with opener.open(tle_req, timeout=SPACE_TRACK_TIMEOUT) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
-    data = json.loads(body)
-    if not isinstance(data, list):
-        raise RuntimeError("Space-Track returned unexpected payload")
-    # Space-Track returns TLE1/TLE2, map to TLE_LINE1/TLE_LINE2
-    for obj in data:
-        if "TLE_LINE1" not in obj and "TLE1" in obj:
-            obj["TLE_LINE1"] = obj["TLE1"]
-        if "TLE_LINE2" not in obj and "TLE2" in obj:
-            obj["TLE_LINE2"] = obj["TLE2"]
-    return data
 
 
 @router.get("/", response_model=list[Satellite])
