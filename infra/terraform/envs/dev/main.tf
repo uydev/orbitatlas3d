@@ -158,12 +158,80 @@ data "aws_ami" "ubuntu" {
   }
 }
 
+# CloudWatch Log Group for OrbitAtlas3D dev logs
+resource "aws_cloudwatch_log_group" "orbitatlas3d_dev" {
+  name              = "/ec2/orbitatlas3d-dev"
+  retention_in_days = 7  # Keep logs for 7 days (free tier covers this)
+
+  tags = {
+    Name        = "orbitatlas3d-dev-logs"
+    Project     = "OrbitAtlas3D"
+    Environment = "dev"
+  }
+}
+
+# IAM role for EC2 to write to CloudWatch Logs
+resource "aws_iam_role" "ec2_cloudwatch_role" {
+  name = "orbitatlas3d-dev-ec2-cloudwatch-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = {
+    Project     = "OrbitAtlas3D"
+    Environment = "dev"
+  }
+}
+
+# Policy to allow writing to CloudWatch Logs
+resource "aws_iam_role_policy" "ec2_cloudwatch_policy" {
+  name = "orbitatlas3d-dev-ec2-cloudwatch-policy"
+  role = aws_iam_role.ec2_cloudwatch_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogStreams"
+      ]
+      Resource = [
+        aws_cloudwatch_log_group.orbitatlas3d_dev.arn,
+        "${aws_cloudwatch_log_group.orbitatlas3d_dev.arn}:*"
+      ]
+    }]
+  })
+}
+
+# IAM instance profile to attach the role to EC2
+resource "aws_iam_instance_profile" "ec2_cloudwatch_profile" {
+  name = "orbitatlas3d-dev-ec2-cloudwatch-profile"
+  role = aws_iam_role.ec2_cloudwatch_role.name
+
+  tags = {
+    Project     = "OrbitAtlas3D"
+    Environment = "dev"
+  }
+}
+
 resource "aws_instance" "orbit_server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.orbit_public_subnet.id
   vpc_security_group_ids = [aws_security_group.orbit_sg.id]
   associate_public_ip_address = true
+  iam_instance_profile   = aws_iam_instance_profile.ec2_cloudwatch_profile.name
 
   key_name = var.key_name != "" ? var.key_name : null
 

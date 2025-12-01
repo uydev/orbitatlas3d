@@ -5,7 +5,7 @@ variable "region" {
 
 variable "instance_type" {
   type    = string
-  default = "t3.micro"
+  default = "t3.small"  # 2 vCPU, 2 GB RAM (upgraded from t3.micro for better build performance)
 }
 
 variable "key_name" {
