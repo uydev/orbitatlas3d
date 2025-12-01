@@ -7,6 +7,9 @@ ARG VITE_API_URL
 ARG VITE_CESIUM_ION_TOKEN
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_CESIUM_ION_TOKEN=${VITE_CESIUM_ION_TOKEN}
+
+# Increase Node.js heap to avoid out-of-memory during Vite + Cesium build
+ENV NODE_OPTIONS=--max-old-space-size=2048
 COPY apps/web/ .
 RUN mkdir -p public/cesium && cp -R node_modules/cesium/Build/Cesium/* public/cesium/
 RUN npm run build
