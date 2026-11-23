@@ -1,3 +1,1 @@
-/api/*  http://34.251.231.218:8000/:splat  200
-
-
+/api/*  https://api-production-6896c697.up.railway.app/:splat  200
